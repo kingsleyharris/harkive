@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build output
+client/dist/
+menubar/HarkiveBar/build/
+menubar/HarkiveBar/*.xcodeproj/xcuserdata/
+menubar/HarkiveBar/*.xcodeproj/project.xcworkspace/
+
+# Personal config — copy harkive.config.example.js to create yours
+harkive.config.js
+
+# Environment
+.env
+.env.local
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Logs
+*.log
+/tmp/
