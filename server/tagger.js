@@ -19,14 +19,17 @@ const SCREENSHOTS_ROOTS = cfg.shots;
 
 const client = new Anthropic();
 
-const PROMPT = `Look at this screenshot and respond with JSON only, no markdown, no explanation.
+const PROMPT = `Look at this UI screenshot and respond with JSON only, no markdown, no explanation.
 Return exactly this shape:
 {
   "platform": "ios" | "android" | "web" | "desktop" | "other",
-  "patterns": array of 1-3 from ["feed","card","detail","modal","onboarding","settings","profile","search","empty-state","navigation","form","auth","map","dashboard","notification","media","commerce","messaging","typography","illustration","other"],
+  "patterns": array of 1-2 from ["onboarding","auth","home","feed","search","profile","settings","detail","form","checkout","paywall","permissions","empty-state","error","loading","map","dashboard","messaging","media","commerce","notification","other"],
+  "components": array of 1-4 from ["button","input","toggle","bottom-sheet","modal","tab-bar","nav-bar","bottom-nav","card","list","avatar","badge","chip","progress","hero","banner","illustration","chart","table","stepper","rating","search-bar","skeleton","tooltip","other"],
   "era": "early" | "mid" | "recent",
   "desc": "10 words max describing what this screen shows"
 }
+patterns = screen type or user journey step
+components = notable UI elements visible in the screenshot
 era guide: early = pre-2015 style, mid = 2015-2020, recent = 2020+`;
 
 function collectImages(root) {

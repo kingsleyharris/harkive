@@ -290,6 +290,7 @@ app.get('/shots', (req, res) => {
             name: f.name, fullPath: f.fullPath, source: e.name, label: e.name,
             date: dateMatch ? dateMatch[1] : null,
             platform: tag.platform || null, patterns: tag.patterns || [],
+            components: tag.components || [],
             era: tag.era || null, desc: tag.desc || null,
           });
         }

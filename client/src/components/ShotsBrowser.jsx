@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import LightBox from './LightBox';
 
 const SOURCE_LABELS = {
@@ -10,16 +10,26 @@ const SOURCE_LABELS = {
 };
 
 const PATTERN_LABELS = {
-  feed: 'Feed', card: 'Card', detail: 'Detail', modal: 'Modal',
-  onboarding: 'Onboarding', settings: 'Settings', profile: 'Profile',
-  search: 'Search', 'empty-state': 'Empty State', navigation: 'Nav',
-  form: 'Form', auth: 'Auth', map: 'Map', dashboard: 'Dashboard',
-  notification: 'Notification', media: 'Media', commerce: 'Commerce',
-  messaging: 'Messaging', typography: 'Typography', illustration: 'Illustration',
-  other: 'Other',
+  onboarding: 'Onboarding', auth: 'Auth', home: 'Home', feed: 'Feed',
+  search: 'Search', profile: 'Profile', settings: 'Settings', detail: 'Detail',
+  form: 'Form', checkout: 'Checkout', paywall: 'Paywall', permissions: 'Permissions',
+  'empty-state': 'Empty State', error: 'Error', loading: 'Loading', map: 'Map',
+  dashboard: 'Dashboard', messaging: 'Messaging', media: 'Media', commerce: 'Commerce',
+  notification: 'Notification', other: 'Other',
+};
+
+const COMPONENT_LABELS = {
+  button: 'Button', input: 'Input', toggle: 'Toggle', 'bottom-sheet': 'Bottom Sheet',
+  modal: 'Modal', 'tab-bar': 'Tab Bar', 'nav-bar': 'Nav Bar', 'bottom-nav': 'Bottom Nav',
+  card: 'Card', list: 'List', avatar: 'Avatar', badge: 'Badge', chip: 'Chip',
+  progress: 'Progress', hero: 'Hero', banner: 'Banner', illustration: 'Illustration',
+  chart: 'Chart', table: 'Table', stepper: 'Stepper', rating: 'Rating',
+  'search-bar': 'Search Bar', skeleton: 'Skeleton', tooltip: 'Tooltip', other: 'Other',
 };
 
 const PLATFORM_LABELS = { ios: 'iOS', android: 'Android', web: 'Web', desktop: 'Desktop', other: 'Other' };
+
+const ERA_LABELS = { early: 'Pre-2015', mid: '2015–2020', recent: '2020+' };
 
 function formatDate(d) {
   if (!d) return null;
@@ -28,6 +38,7 @@ function formatDate(d) {
 }
 
 function ChipGroup({ title, options, active, onToggle }) {
+  if (!options.length) return null;
   return (
     <div className="shots-chip-group">
       <span className="shots-chip-label">{title}</span>
@@ -44,70 +55,70 @@ function ChipGroup({ title, options, active, onToggle }) {
   );
 }
 
+function toggle(set, setFn, key) {
+  setFn(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
+}
+
 export default function ShotsBrowser() {
   const [shots, setShots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeSource, setActiveSource] = useState(new Set());
   const [activePattern, setActivePattern] = useState(new Set());
+  const [activeComponent, setActiveComponent] = useState(new Set());
   const [activePlatform, setActivePlatform] = useState(new Set());
+  const [activeEra, setActiveEra] = useState(new Set());
   const [lightbox, setLightbox] = useState(null);
   const [taggingProgress, setTaggingProgress] = useState(null);
 
   useEffect(() => {
     fetch('/shots').then(r => r.json()).then(d => { setShots(d); setLoading(false); });
-    // Poll tagging progress
     const poll = setInterval(() => {
       fetch('/shots/tags-progress').then(r => r.json()).then(p => {
         setTaggingProgress(p);
-        if (p.tagged > 0) {
-          // Refresh shots to get new tags
-          fetch('/shots').then(r => r.json()).then(setShots);
-        }
+        if (p.tagged > 0) fetch('/shots').then(r => r.json()).then(setShots);
       }).catch(() => {});
     }, 5000);
     return () => clearInterval(poll);
   }, []);
 
-  function toggle(set, setFn, key) {
-    setFn(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
+  // Build filter options from actual data, sorted by frequency
+  function buildOptions(keys, labelMap) {
+    const map = {};
+    keys.forEach(k => map[k] = (map[k] || 0) + 1);
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([k]) => [k, labelMap[k] || k]);
   }
 
-  const sources = useMemo(() => {
-    const map = {};
-    shots.forEach(s => map[s.source] = (map[s.source] || 0) + 1);
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([k]) => [k, SOURCE_LABELS[k] || k]);
-  }, [shots]);
-
-  const patterns = useMemo(() => {
-    const map = {};
-    shots.forEach(s => (s.patterns || []).forEach(p => map[p] = (map[p] || 0) + 1));
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([k]) => [k, PATTERN_LABELS[k] || k]);
-  }, [shots]);
-
-  const platforms = useMemo(() => {
-    const map = {};
-    shots.forEach(s => s.platform && (map[s.platform] = (map[s.platform] || 0) + 1));
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([k]) => [k, PLATFORM_LABELS[k] || k]);
-  }, [shots]);
+  const sources = useMemo(() => buildOptions(shots.map(s => s.source), SOURCE_LABELS), [shots]);
+  const patterns = useMemo(() => buildOptions(shots.flatMap(s => s.patterns || []), PATTERN_LABELS), [shots]);
+  const components = useMemo(() => buildOptions(shots.flatMap(s => s.components || []), COMPONENT_LABELS), [shots]);
+  const platforms = useMemo(() => buildOptions(shots.filter(s => s.platform).map(s => s.platform), PLATFORM_LABELS), [shots]);
+  const eras = useMemo(() => buildOptions(shots.filter(s => s.era).map(s => s.era), ERA_LABELS), [shots]);
 
   const filtered = useMemo(() => {
     let s = shots;
-    if (activeSource.size) s = s.filter(x => activeSource.has(x.source));
-    if (activePattern.size) s = s.filter(x => (x.patterns || []).some(p => activePattern.has(p)));
-    if (activePlatform.size) s = s.filter(x => activePlatform.has(x.platform));
-    if (search.trim()) s = s.filter(x =>
-      x.name.toLowerCase().includes(search.toLowerCase()) ||
-      (x.desc || '').toLowerCase().includes(search.toLowerCase())
-    );
+    if (activeSource.size)    s = s.filter(x => activeSource.has(x.source));
+    if (activePattern.size)   s = s.filter(x => (x.patterns || []).some(p => activePattern.has(p)));
+    if (activeComponent.size) s = s.filter(x => (x.components || []).some(c => activeComponent.has(c)));
+    if (activePlatform.size)  s = s.filter(x => activePlatform.has(x.platform));
+    if (activeEra.size)       s = s.filter(x => activeEra.has(x.era));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      s = s.filter(x => x.name.toLowerCase().includes(q) || (x.desc || '').toLowerCase().includes(q));
+    }
     return s;
-  }, [shots, activeSource, activePattern, activePlatform, search]);
+  }, [shots, activeSource, activePattern, activeComponent, activePlatform, activeEra, search]);
 
-  const hasFilters = activeSource.size || activePattern.size || activePlatform.size || search;
+  const hasFilters = activeSource.size || activePattern.size || activeComponent.size || activePlatform.size || activeEra.size || search;
+
+  function clearAll() {
+    setActiveSource(new Set()); setActivePattern(new Set()); setActiveComponent(new Set());
+    setActivePlatform(new Set()); setActiveEra(new Set()); setSearch('');
+  }
 
   return (
     <div className="shots-browser">
@@ -125,12 +136,7 @@ export default function ShotsBrowser() {
               Tagging {taggingProgress.tagged.toLocaleString()} / {shots.length.toLocaleString()} ✦
             </span>
           )}
-          {hasFilters && (
-            <button className="shots-clear" onClick={() => {
-              setActiveSource(new Set()); setActivePattern(new Set());
-              setActivePlatform(new Set()); setSearch('');
-            }}>Clear filters</button>
-          )}
+          {hasFilters && <button className="shots-clear" onClick={clearAll}>Clear filters</button>}
         </div>
 
         <div className="shots-search-wrap">
@@ -143,16 +149,11 @@ export default function ShotsBrowser() {
           {search && <button className="search-clear" onClick={() => setSearch('')}>⊗</button>}
         </div>
 
-        <ChipGroup title="Source" options={sources} active={activeSource}
-          onToggle={k => toggle(activeSource, setActiveSource, k)} />
-        {patterns.length > 0 && (
-          <ChipGroup title="Pattern" options={patterns} active={activePattern}
-            onToggle={k => toggle(activePattern, setActivePattern, k)} />
-        )}
-        {platforms.length > 0 && (
-          <ChipGroup title="Platform" options={platforms} active={activePlatform}
-            onToggle={k => toggle(activePlatform, setActivePlatform, k)} />
-        )}
+        <ChipGroup title="Source"    options={sources}    active={activeSource}    onToggle={k => toggle(activeSource, setActiveSource, k)} />
+        <ChipGroup title="Screen"    options={patterns}   active={activePattern}   onToggle={k => toggle(activePattern, setActivePattern, k)} />
+        <ChipGroup title="Component" options={components} active={activeComponent} onToggle={k => toggle(activeComponent, setActiveComponent, k)} />
+        <ChipGroup title="Platform"  options={platforms}  active={activePlatform}  onToggle={k => toggle(activePlatform, setActivePlatform, k)} />
+        <ChipGroup title="Era"       options={eras}       active={activeEra}       onToggle={k => toggle(activeEra, setActiveEra, k)} />
       </div>
 
       {loading && <div className="empty-state" style={{ paddingTop: 60 }}>Loading shots…</div>}
@@ -170,12 +171,18 @@ export default function ShotsBrowser() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                   {shot.platform && <span className="shot-platform-badge">{PLATFORM_LABELS[shot.platform] || shot.platform}</span>}
+                  {shot.era && <span className="shot-era-badge">{ERA_LABELS[shot.era] || shot.era}</span>}
                   {shot.date && <span className="shot-date">{formatDate(shot.date)}</span>}
                 </div>
               </div>
-              {(shot.patterns || []).length > 0 && (
-                <div className="shot-patterns">
-                  {shot.patterns.map(p => <span key={p} className="shot-pattern-tag">{PATTERN_LABELS[p] || p}</span>)}
+              {((shot.patterns || []).length > 0 || (shot.components || []).length > 0) && (
+                <div className="shot-tags-row">
+                  {(shot.patterns || []).map(p => (
+                    <span key={p} className="shot-tag shot-tag-pattern">{PATTERN_LABELS[p] || p}</span>
+                  ))}
+                  {(shot.components || []).map(c => (
+                    <span key={c} className="shot-tag shot-tag-component">{COMPONENT_LABELS[c] || c}</span>
+                  ))}
                 </div>
               )}
             </div>
