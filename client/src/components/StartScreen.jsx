@@ -11,10 +11,18 @@ export default function StartScreen({ onReady }) {
   const [waitingForMount, setWaitingForMount] = useState(false);
 
   function checkHealth() {
-    fetch('/health').then(r => r.json()).then(h => {
-      setHealth(h);
-      if (isHealthy(h)) onReady();
-    }).catch(() => {});
+    fetch('/health')
+      .then(r => r.json())
+      .then(h => {
+        setHealth(h);
+        // Auto-proceed if drives are up, or nothing is configured
+        const nothingConfigured = ['photos','docs','archive','studio','videos'].every(k => h[k] === null) && !h.shots?.length;
+        if (isHealthy(h) || nothingConfigured) onReady();
+      })
+      .catch(() => {
+        // Server not ready yet — retry in 1s
+        setTimeout(checkHealth, 1000);
+      });
   }
 
   useEffect(() => {
@@ -35,9 +43,13 @@ export default function StartScreen({ onReady }) {
 
   function isHealthy(h) {
     if (!h) return false;
-    // At least one main section must be reachable
     return ['photos', 'docs', 'archive', 'studio', 'videos'].some(k => h[k] === true)
       || (h.shots || []).some(s => s.ok);
+  }
+
+  function serverReachable(h) {
+    // Server responded — at least show the UI even if all drives are offline
+    return h !== null;
   }
 
   function handleConnect() {
