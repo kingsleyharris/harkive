@@ -601,5 +601,42 @@ app.get('/notion/db/:id', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Health & NAS ──────────────────────────────────────────────────────────────
+
+const { execFile } = require('child_process');
+
+// Returns mount status for each configured section
+app.get('/health', (req, res) => {
+  function reachable(p) {
+    if (!p) return null;
+    try { fs.accessSync(p, fs.constants.R_OK); return true; } catch (_) { return false; }
+  }
+  res.json({
+    photos:  reachable(cfg.photos),
+    docs:    reachable(cfg.docs),
+    archive: reachable(cfg.archive),
+    studio:  reachable(cfg.studio),
+    videos:  reachable(cfg.videos),
+    shots:   cfg.shots.map(p => ({ path: p, ok: reachable(p) })),
+    nas:     cfg.nas?.shares || [],
+  });
+});
+
+// Trigger macOS to mount each NAS share via open(1)
+app.post('/nas/connect', (req, res) => {
+  const shares = cfg.nas?.shares || [];
+  if (!shares.length) return res.json({ ok: true, shares: [] });
+  let pending = shares.length;
+  const results = [];
+  for (const share of shares) {
+    execFile('open', [share], (err) => {
+      results.push({ share, err: err?.message || null });
+      if (--pending === 0) res.json({ ok: true, results });
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Harkive server on http://localhost:${PORT}`));

@@ -53,4 +53,13 @@ module.exports = {
   // Set NOTION_TOKEN in your environment or .env file.
   // Get a token at https://www.notion.so/my-integrations
   notionToken: process.env.NOTION_TOKEN || null,
+
+  // NAS shares to mount when clicking Connect (optional)
+  // Uses macOS "open smb://..." to trigger mount with Keychain auth
+  nas: {
+    shares: [
+      // 'smb://your-nas/share1',
+      // 'smb://your-nas/share2',
+    ],
+  },
 };

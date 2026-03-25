@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import StartScreen from './components/StartScreen';
 import YearGrid from './components/YearGrid';
 import EventGrid from './components/EventGrid';
 import LightBox from './components/LightBox';
@@ -28,6 +29,7 @@ const NAV = [
 ];
 
 export default function App() {
+  const [ready, setReady] = useState(false);
   const [tab, setTab] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -96,6 +98,8 @@ export default function App() {
       </div>
     );
   }
+
+  if (!ready) return <StartScreen onReady={() => setReady(true)} />;
 
   return (
     <div className="app">

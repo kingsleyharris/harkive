@@ -33,6 +33,7 @@ const cfg = {
   appScreens: expandArr(raw.appScreens),
   music:      expandArr(raw.music),
   notionToken: raw.notionToken || process.env.NOTION_TOKEN || null,
+  nas: raw.nas || { shares: [] },
 };
 
 // All configured roots — used for security checks on /image requests

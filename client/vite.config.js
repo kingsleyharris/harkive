@@ -22,6 +22,8 @@ export default defineConfig({
       '/videos': 'http://localhost:3001',
       '/video': 'http://localhost:3001',
       '/dashboard': 'http://localhost:3001',
+      '/health': 'http://localhost:3001',
+      '/nas': 'http://localhost:3001',
     }
   }
 })
