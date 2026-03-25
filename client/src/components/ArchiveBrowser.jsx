@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import LightBox from './LightBox';
+import DriveOffline from './DriveOffline';
 
 export default function ArchiveBrowser() {
-  const [albums, setAlbums] = useState([]);
+  const [albums, setAlbums] = useState(null);
   const [selected, setSelected] = useState(null);
   const [photos, setPhotos] = useState([]);
   const [lightbox, setLightbox] = useState(null);
@@ -20,6 +21,9 @@ export default function ArchiveBrowser() {
       .then(r => r.json())
       .then(files => { setPhotos(files); setLoading(false); });
   }
+
+  if (albums === null) return <div className="empty-state">Loading…</div>;
+  if (albums.length === 0) return <DriveOffline label="Archive" />;
 
   // Group albums by section for display
   const sections = {};

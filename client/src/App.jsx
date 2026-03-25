@@ -12,6 +12,7 @@ import VideoPlayer from './components/VideoPlayer';
 import Dashboard from './components/Dashboard';
 import NotionBrowser from './components/NotionBrowser';
 import ShotsBrowser from './components/ShotsBrowser';
+import DriveOffline from './components/DriveOffline';
 import './App.css';
 
 const API = '';
@@ -33,7 +34,7 @@ export default function App() {
   const [tab, setTab] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
-  const [years, setYears] = useState([]);
+  const [years, setYears] = useState(null);
   const [selectedYear, setSelectedYear] = useState(null);
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -142,7 +143,9 @@ export default function App() {
           {showSearch && <SearchResults results={searchResults} onSelectEvent={selectEvent} api={API} />}
 
           {!showSearch && tab === 'photos' && <>
-            {!selectedYear && <YearGrid years={years} onSelect={selectYear} />}
+            {!selectedYear && years === null && <div className="empty-state">Loading…</div>}
+            {!selectedYear && years !== null && years.length === 0 && <DriveOffline label="Photos" />}
+            {!selectedYear && years?.length > 0 && <YearGrid years={years} onSelect={selectYear} />}
             {selectedYear && !selectedEvent && <EventGrid year={selectedYear} events={events} api={API} onSelect={selectEvent} />}
             {selectedEvent && (
               <div className="photo-grid">

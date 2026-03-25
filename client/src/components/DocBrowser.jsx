@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DriveOffline from './DriveOffline';
 
 const ICONS = {
   pdf: '📄', doc: '📝', docx: '📝', pages: '📝',
@@ -19,7 +20,7 @@ function formatDate(d) {
 }
 
 export default function DocBrowser() {
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(null);
   const [selectedCat, setSelectedCat] = useState(null);
   const [files, setFiles] = useState([]);
   const [filter, setFilter] = useState('');
@@ -41,6 +42,9 @@ export default function DocBrowser() {
   const filtered = filter
     ? files.filter(f => f.name.toLowerCase().includes(filter.toLowerCase()))
     : files;
+
+  if (categories === null) return <div className="empty-state">Loading…</div>;
+  if (categories.length === 0) return <DriveOffline label="Documents" />;
 
   return (
     <div className="doc-browser">

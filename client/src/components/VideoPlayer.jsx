@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import DriveOffline from './DriveOffline';
 
 function formatSize(bytes) {
   if (bytes > 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
@@ -7,7 +8,7 @@ function formatSize(bytes) {
 }
 
 export default function VideoPlayer() {
-  const [videos, setVideos] = useState([]);
+  const [videos, setVideos] = useState(null);
   const [playing, setPlaying] = useState(null);
   const videoRef = useRef(null);
 
@@ -19,6 +20,9 @@ export default function VideoPlayer() {
     setPlaying(video);
     setTimeout(() => videoRef.current?.play(), 50);
   }
+
+  if (videos === null) return <div className="empty-state">Loading…</div>;
+  if (videos.length === 0) return <DriveOffline label="Videos" />;
 
   return (
     <div>

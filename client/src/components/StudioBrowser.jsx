@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
+import DriveOffline from './DriveOffline';
 
 export default function StudioBrowser() {
-  const [albums, setAlbums] = useState([]);
+  const [albums, setAlbums] = useState(null);
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     fetch('/studio/albums').then(r => r.json()).then(setAlbums);
   }, []);
+
+  if (albums === null) return <div className="empty-state">Loading…</div>;
+  if (albums.length === 0) return <DriveOffline label="Studio" />;
 
   if (selected) {
     return (
