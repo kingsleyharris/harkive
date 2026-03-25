@@ -1,12 +1,15 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const fs = require('fs');
 const path = require('path');
 const { Client: NotionClient } = require('@notionhq/client');
 const cfg = require('./config');
+const cache = require('./cache');
 
 const app = express();
 app.use(cors());
+app.use(compression());
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
@@ -66,16 +69,22 @@ app.get('/cover', (req, res) => {
 
 app.get('/years', (req, res) => {
   if (!cfg.photos) return res.json([]);
+  const cached = cache.get('years');
+  if (cached) return res.json(cached);
   try {
     const years = fs.readdirSync(cfg.photos, { withFileTypes: true })
       .filter(e => e.isDirectory() && /^\d{4}$/.test(e.name))
       .map(e => e.name).sort().reverse();
+    cache.set('years', years, 300_000);
     res.json(years);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/years/:year', (req, res) => {
   if (!cfg.photos) return res.json([]);
+  const key = `year:${req.params.year}`;
+  const cached = cache.get(key);
+  if (cached) return res.json(cached);
   const yearPath = path.join(cfg.photos, req.params.year);
   try {
     const events = fs.readdirSync(yearPath, { withFileTypes: true })
@@ -87,6 +96,7 @@ app.get('/years/:year', (req, res) => {
         return { name: e.name, count: files.length, cover: cover?.name || null, coverPath: cover?.fullPath || null };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
+    cache.set(key, events, 300_000);
     res.json(events);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -264,19 +274,34 @@ app.get('/search', (req, res) => {
 
 // ── Shots (Mobbin-style flat browser) ────────────────────────────────────────
 
+let _tagsCache = null;
 function loadTags() {
-  try { return JSON.parse(fs.readFileSync(cfg.tagsFile, 'utf8')); } catch (_) { return {}; }
+  if (_tagsCache) return _tagsCache;
+  try { _tagsCache = JSON.parse(fs.readFileSync(cfg.tagsFile, 'utf8')); } catch (_) { _tagsCache = {}; }
+  return _tagsCache;
 }
 
+// Watch tags file — invalidate caches whenever tagger writes new tags
+try {
+  fs.watch(cfg.tagsFile, () => {
+    _tagsCache = null;
+    cache.invalidate('shots');
+    cache.invalidate('shots-progress');
+  });
+} catch (_) {}
+
 app.get('/shots/tags-progress', (req, res) => {
+  const cached = cache.get('shots-progress');
+  if (cached) return res.json(cached);
   const tags = loadTags();
-  const tagged = Object.values(tags).filter(t => !t.error).length;
-  const errors = Object.values(tags).filter(t => t.error).length;
-  res.json({ tagged, errors, total: tagged + errors });
+  const vals = Object.values(tags);
+  const result = { tagged: vals.filter(t => !t.error).length, errors: vals.filter(t => t.error).length, total: vals.length };
+  cache.set('shots-progress', result, 4_000); // 4s TTL — matches poll interval
+  res.json(result);
 });
 
-app.get('/shots', (req, res) => {
-  if (!cfg.shots.length) return res.json([]);
+function buildShots() {
+  if (!cfg.shots.length) return [];
   const tags = loadTags();
   const all = [];
   for (const root of cfg.shots) {
@@ -290,12 +315,10 @@ app.get('/shots', (req, res) => {
             name: f.name, fullPath: f.fullPath, source: e.name, label: e.name,
             date: dateMatch ? dateMatch[1] : null,
             platform: tag.platform || null, patterns: tag.patterns || [],
-            components: tag.components || [],
-            era: tag.era || null, desc: tag.desc || null,
+            components: tag.components || [], era: tag.era || null, desc: tag.desc || null,
           });
         }
       }
-      // Also pick up root-level images (not inside a subfolder)
       for (const e of fs.readdirSync(root, { withFileTypes: true }).filter(e => e.isFile() && isBrowserImage(e.name))) {
         const fullPath = path.join(root, e.name);
         const dateMatch = e.name.match(/(\d{4}-\d{2}-\d{2})/);
@@ -304,20 +327,27 @@ app.get('/shots', (req, res) => {
           name: e.name, fullPath, source: path.basename(root), label: path.basename(root),
           date: dateMatch ? dateMatch[1] : null,
           platform: tag.platform || null, patterns: tag.patterns || [],
-          era: tag.era || null, desc: tag.desc || null,
+          components: tag.components || [], era: tag.era || null, desc: tag.desc || null,
         });
       }
     } catch (_) {}
   }
   const seen = new Set();
-  const unique = all
+  return all
     .filter(f => { if (seen.has(f.fullPath)) return false; seen.add(f.fullPath); return true; })
     .sort((a, b) => {
       if (a.date && b.date) return b.date.localeCompare(a.date);
       if (a.date) return -1; if (b.date) return 1;
       return a.name.localeCompare(b.name);
     });
-  res.json(unique);
+}
+
+app.get('/shots', (req, res) => {
+  const cached = cache.get('shots');
+  if (cached) return res.json(cached);
+  const result = buildShots();
+  cache.set('shots', result, 300_000); // 5 min TTL — invalidated by fs.watch on tags file
+  res.json(result);
 });
 
 // ── Screenshots ────────────────────────────────────────────────────────────────
@@ -359,6 +389,8 @@ app.get('/screenshots/files', (req, res) => {
 
 app.get('/archive', (req, res) => {
   if (!cfg.archive) return res.json([]);
+  const cached = cache.get('archive');
+  if (cached) return res.json(cached);
   const albums = [];
   try {
     for (const section of fs.readdirSync(cfg.archive, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith('.'))) {
@@ -379,6 +411,7 @@ app.get('/archive', (req, res) => {
       }
     }
   } catch (err) { return res.status(500).json({ error: err.message }); }
+  cache.set('archive', albums, 300_000);
   res.json(albums);
 });
 
@@ -429,6 +462,8 @@ function scanAbletonRoot(root) {
 
 app.get('/studio/albums', (req, res) => {
   if (!cfg.studio) return res.json([]);
+  const cached = cache.get('studio');
+  if (cached) return res.json(cached);
   const map = {};
   for (const t of scanAbletonRoot(cfg.studio)) {
     const dirName = path.basename(t.projectDir);
@@ -442,6 +477,7 @@ app.get('/studio/albums', (req, res) => {
   const albums = Object.values(map).filter(a => a.tracks.length > 0)
     .map(a => ({ name: a.name, trackCount: a.tracks.length, tracks: a.tracks }))
     .sort((a, b) => a.name.localeCompare(b.name));
+  cache.set('studio', albums, 300_000);
   res.json(albums);
 });
 
@@ -639,4 +675,8 @@ app.post('/nas/connect', (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Harkive server on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Harkive server on http://localhost:${PORT}`);
+  // Pre-warm shots cache in background so first request is instant
+  if (cfg.shots.length) setImmediate(() => { cache.set('shots', buildShots(), 300_000); });
+});
