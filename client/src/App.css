@@ -779,6 +779,18 @@ main::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
   color: #fff;
   border-color: var(--text-primary);
 }
+.chip-count {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+.shot-chip.active .chip-count { opacity: 0.75; }
+.shots-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0 8px;
+}
 
 /* Masonry grid */
 .shots-masonry {
