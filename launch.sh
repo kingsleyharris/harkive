@@ -10,6 +10,17 @@ lsof -ti :5173 | xargs kill -9 2>/dev/null
 # Load local env if present
 [ -f "$HARKIVE/.env" ] && export $(grep -v '^#' "$HARKIVE/.env" | xargs)
 
+# Mount NAS shares if not already mounted
+NAS=musicbox.local
+for share in photo home video; do
+  if ! mount | grep -q "/Volumes/$share"; then
+    echo "Mounting $share..."
+    mkdir -p /Volumes/$share
+    mount_smbfs //kingsley@$NAS/$share /Volumes/$share 2>/dev/null || \
+      open "smb://$NAS/$share"
+  fi
+done
+
 # Start server
 node "$HARKIVE/server/index.js" &
 SERVER_PID=$!

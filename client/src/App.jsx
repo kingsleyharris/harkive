@@ -1,19 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import StartScreen from './components/StartScreen';
 import YearGrid from './components/YearGrid';
 import EventGrid from './components/EventGrid';
 import LightBox from './components/LightBox';
-import DocBrowser from './components/DocBrowser';
-import ProjectsBrowser from './components/ProjectsBrowser';
 import SearchResults from './components/SearchResults';
-import ArchiveBrowser from './components/ArchiveBrowser';
-import StudioBrowser from './components/StudioBrowser';
-import VideoPlayer from './components/VideoPlayer';
-import Dashboard from './components/Dashboard';
-import NotionBrowser from './components/NotionBrowser';
-import ShotsBrowser from './components/ShotsBrowser';
 import DriveOffline from './components/DriveOffline';
 import './App.css';
+
+const DocBrowser      = lazy(() => import('./components/DocBrowser'));
+const ProjectsBrowser = lazy(() => import('./components/ProjectsBrowser'));
+const ArchiveBrowser  = lazy(() => import('./components/ArchiveBrowser'));
+const StudioBrowser   = lazy(() => import('./components/StudioBrowser'));
+const VideoPlayer     = lazy(() => import('./components/VideoPlayer'));
+const Dashboard       = lazy(() => import('./components/Dashboard'));
+const NotionBrowser   = lazy(() => import('./components/NotionBrowser'));
+const ShotsBrowser    = lazy(() => import('./components/ShotsBrowser'));
 
 const API = '';
 
@@ -140,6 +141,7 @@ export default function App() {
         </div>
 
         <main>
+          <Suspense fallback={<div className="empty-state">Loading…</div>}>
           {showSearch && <SearchResults results={searchResults} onSelectEvent={selectEvent} api={API} />}
 
           {!showSearch && tab === 'photos' && <>
@@ -173,6 +175,7 @@ export default function App() {
           {!showSearch && tab === 'docs' && <DocBrowser />}
           {!showSearch && tab === 'projects' && <ProjectsBrowser />}
           {!showSearch && tab === 'dashboard' && <Dashboard onNavigate={switchTab} />}
+          </Suspense>
         </main>
       </div>
 

@@ -1,5 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import LightBox from './LightBox';
+
+const PAGE_SIZE = 100;
 
 const SOURCE_LABELS = {
   'team-patches': 'Team Patches', 'goals': 'Goals', 'q2': 'Q2',
@@ -74,9 +76,32 @@ export default function ShotsBrowser() {
   const [activeEra, setActiveEra] = useState(new Set());
   const [lightbox, setLightbox] = useState(null);
   const [taggingProgress, setTaggingProgress] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef(null);
+  const mountTime = useRef(performance.now());
+
+  // Expand visible window when sentinel scrolls into view
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) setVisibleCount(n => n + PAGE_SIZE);
+    }, { rootMargin: '400px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loading]);
+
+  // Reset visible count when filters change
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search, activeSource, activePattern, activeComponent, activePlatform, activeEra]);
 
   useEffect(() => {
-    fetch('/shots').then(r => r.json()).then(d => { setShots(d); setLoading(false); });
+    performance.mark('shots-fetch-start');
+    fetch('/shots').then(r => r.json()).then(d => {
+      performance.mark('shots-data-ready');
+      performance.measure('shots: mount → data', { start: mountTime.current, end: performance.now() });
+      setShots(d);
+      setLoading(false);
+    });
     const poll = setInterval(() => {
       fetch('/shots/tags-progress').then(r => r.json()).then(p => {
         setTaggingProgress(p);
@@ -114,6 +139,24 @@ export default function ShotsBrowser() {
   }, [shots, activeSource, activePattern, activeComponent, activePlatform, activeEra, search]);
 
   const hasFilters = activeSource.size || activePattern.size || activeComponent.size || activePlatform.size || activeEra.size || search;
+
+  const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
+  // Log render time after first data paint
+  useEffect(() => {
+    if (loading || !filtered.length) return;
+    const renderTime = performance.now();
+    const fetchMark = performance.getEntriesByName('shots-fetch-start')[0];
+    const dataMark  = performance.getEntriesByName('shots-data-ready')[0];
+    if (fetchMark && dataMark) {
+      console.log(
+        `[Shots] mount→data: ${(dataMark.startTime - mountTime.current).toFixed(0)}ms` +
+        ` | data→render: ${(renderTime - dataMark.startTime).toFixed(0)}ms` +
+        ` | total: ${(renderTime - mountTime.current).toFixed(0)}ms` +
+        ` | items: ${filtered.length} (showing ${Math.min(visibleCount, filtered.length)})`
+      );
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function clearAll() {
     setActiveSource(new Set()); setActivePattern(new Set()); setActiveComponent(new Set());
@@ -161,7 +204,7 @@ export default function ShotsBrowser() {
 
       {!loading && filtered.length > 0 && (
         <div className="shots-masonry">
-          {filtered.map((shot, i) => (
+          {visible.map((shot, i) => (
             <div key={shot.fullPath} className="shot-card" onClick={() => setLightbox(i)}>
               <img src={`/image?path=${encodeURIComponent(shot.fullPath)}`} loading="lazy" alt={shot.name} />
               <div className="shot-overlay">
@@ -187,6 +230,9 @@ export default function ShotsBrowser() {
               )}
             </div>
           ))}
+          {visibleCount < filtered.length && (
+            <div ref={sentinelRef} style={{ gridColumn: '1/-1', height: 1 }} />
+          )}
         </div>
       )}
 
