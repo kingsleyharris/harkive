@@ -558,6 +558,14 @@ app.get('/dashboard', (req, res) => {
     } catch (_) { stats.videos = 0; }
   } else { stats.videos = 0; }
 
+  if (cfg.dropbox) {
+    try {
+      const entries = fs.readdirSync(cfg.dropbox, { withFileTypes: true }).filter(e => !e.name.startsWith('.'));
+      stats.dropboxFolders = entries.filter(e => e.isDirectory()).length;
+      stats.dropboxFiles   = entries.filter(e => e.isFile()).length;
+    } catch (_) { stats.dropboxFolders = 0; stats.dropboxFiles = 0; }
+  } else { stats.dropboxFolders = 0; stats.dropboxFiles = 0; }
+
   res.json(stats);
 });
 
@@ -637,6 +645,53 @@ app.get('/notion/db/:id', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Dropbox ───────────────────────────────────────────────────────────────────
+
+function listDropboxDir(dir) {
+  const folders = [], files = [];
+  try {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name.startsWith('.')) continue;
+      const full = path.join(dir, e.name);
+      const ext = path.extname(e.name).toLowerCase();
+      if (e.isDirectory()) {
+        let count = 0;
+        try { count = fs.readdirSync(full).filter(f => !f.startsWith('.')).length; } catch (_) {}
+        folders.push({ name: e.name, fullPath: full, count });
+      } else {
+        let stat = null;
+        try { stat = fs.statSync(full); } catch (_) {}
+        const type = IMAGE_EXTS.has(ext) ? 'image' : VIDEO_EXTS.has(ext) ? 'video' : AUDIO_EXTS.has(ext) ? 'audio' : DOC_EXTS.has(ext) ? 'doc' : 'other';
+        files.push({ name: e.name, fullPath: full, ext: ext.slice(1), size: stat?.size || 0, modified: stat?.mtime || null, type, displayable: isBrowserImage(e.name) });
+      }
+    }
+  } catch (_) {}
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+  return { folders, files };
+}
+
+app.get('/dropbox', (req, res) => {
+  if (!cfg.dropbox) return res.json({ folders: [], files: [], configured: false });
+  const result = listDropboxDir(cfg.dropbox);
+  res.json({ ...result, configured: true });
+});
+
+app.get('/dropbox/browse', (req, res) => {
+  if (!cfg.dropbox) return res.status(503).json({ error: 'Dropbox not configured' });
+  const rel = (req.query.path || '').replace(/^\/+/, '');
+  const target = rel ? path.join(cfg.dropbox, rel) : cfg.dropbox;
+  if (!target.startsWith(cfg.dropbox)) return res.status(403).end();
+  const result = listDropboxDir(target);
+  res.json(result);
+});
+
+app.get('/dropbox/file', (req, res) => {
+  const fp = req.query.path;
+  if (!cfg.dropbox || !fp || !fp.startsWith(cfg.dropbox)) return res.status(403).end();
+  res.sendFile(fp);
+});
+
 // ── Health & NAS ──────────────────────────────────────────────────────────────
 
 const { execFile } = require('child_process');
@@ -653,6 +708,7 @@ app.get('/health', (req, res) => {
     archive: reachable(cfg.archive),
     studio:  reachable(cfg.studio),
     videos:  reachable(cfg.videos),
+    dropbox: reachable(cfg.dropbox),
     shots:   cfg.shots.map(p => ({ path: p, ok: reachable(p) })),
     nas:     cfg.nas?.shares || [],
   });

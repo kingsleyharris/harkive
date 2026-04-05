@@ -15,6 +15,7 @@ const VideoPlayer     = lazy(() => import('./components/VideoPlayer'));
 const Dashboard       = lazy(() => import('./components/Dashboard'));
 const NotionBrowser   = lazy(() => import('./components/NotionBrowser'));
 const ShotsBrowser    = lazy(() => import('./components/ShotsBrowser'));
+const DropboxBrowser  = lazy(() => import('./components/DropboxBrowser'));
 
 const API = '';
 
@@ -28,6 +29,7 @@ const NAV = [
   { id: 'notion',    label: 'Notion',    icon: 'N' },
   { id: 'docs',      label: 'Documents', icon: '≡' },
   { id: 'projects',  label: 'Projects',  icon: '◉' },
+  { id: 'dropbox',   label: 'Dropbox',   icon: '◈' },
 ];
 
 export default function App() {
@@ -175,6 +177,7 @@ export default function App() {
           {!showSearch && tab === 'docs' && <DocBrowser />}
           {!showSearch && tab === 'projects' && <ProjectsBrowser />}
           {!showSearch && tab === 'dashboard' && <Dashboard onNavigate={switchTab} />}
+          {!showSearch && tab === 'dropbox' && <DropboxBrowser />}
           </Suspense>
         </main>
       </div>

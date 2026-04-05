@@ -49,6 +49,14 @@ export default function Dashboard({ onNavigate }) {
             <StatCard value={stats.docCategories} label="Doc Categories" onClick={() => onNavigate('docs')} />
             <StatCard value={stats.videos} label="Videos" onClick={() => onNavigate('videos')} />
           </div>
+
+          {(stats.dropboxFolders > 0 || stats.dropboxFiles > 0) && <>
+            <div className="section-heading" style={{ marginBottom: 12 }}>Dropbox</div>
+            <div className="stat-grid" style={{ marginBottom: 32 }}>
+              <StatCard value={stats.dropboxFolders} label="Folders" onClick={() => onNavigate('dropbox')} />
+              <StatCard value={stats.dropboxFiles}   label="Root Files" onClick={() => onNavigate('dropbox')} />
+            </div>
+          </>}
         </>
       )}
     </div>

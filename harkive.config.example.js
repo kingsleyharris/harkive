@@ -49,6 +49,12 @@ module.exports = {
   // Folders containing audio/music files (shows in Projects > Music tab)
   music: [],
 
+  // ── Dropbox ───────────────────────────────────────────────────────────────
+  // Root of your local Dropbox sync folder.
+  // On modern macOS this is usually ~/Library/CloudStorage/Dropbox
+  // or ~/Dropbox for older desktop app installs.
+  dropbox: '~/Dropbox',
+
   // ── Notion (optional) ─────────────────────────────────────────────────────
   // Set NOTION_TOKEN in your environment or .env file.
   // Get a token at https://www.notion.so/my-integrations
