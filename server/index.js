@@ -558,13 +558,7 @@ app.get('/dashboard', (req, res) => {
     } catch (_) { stats.videos = 0; }
   } else { stats.videos = 0; }
 
-  if (cfg.dropbox) {
-    try {
-      const entries = fs.readdirSync(cfg.dropbox, { withFileTypes: true }).filter(e => !e.name.startsWith('.'));
-      stats.dropboxFolders = entries.filter(e => e.isDirectory()).length;
-      stats.dropboxFiles   = entries.filter(e => e.isFile()).length;
-    } catch (_) { stats.dropboxFolders = 0; stats.dropboxFiles = 0; }
-  } else { stats.dropboxFolders = 0; stats.dropboxFiles = 0; }
+  stats.dropboxFolders = 0; stats.dropboxFiles = 0; // populated async via /dropbox
 
   if (cfg.shots.length) {
     try {
@@ -703,51 +697,80 @@ app.get('/notion/db/:id', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Dropbox ───────────────────────────────────────────────────────────────────
+// ── Dropbox API ───────────────────────────────────────────────────────────────
 
-function listDropboxDir(dir) {
-  const folders = [], files = [];
-  try {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (e.name.startsWith('.')) continue;
-      const full = path.join(dir, e.name);
-      const ext = path.extname(e.name).toLowerCase();
-      if (e.isDirectory()) {
-        let count = 0;
-        try { count = fs.readdirSync(full).filter(f => !f.startsWith('.')).length; } catch (_) {}
-        folders.push({ name: e.name, fullPath: full, count });
-      } else {
-        let stat = null;
-        try { stat = fs.statSync(full); } catch (_) {}
-        const type = IMAGE_EXTS.has(ext) ? 'image' : VIDEO_EXTS.has(ext) ? 'video' : AUDIO_EXTS.has(ext) ? 'audio' : DOC_EXTS.has(ext) ? 'doc' : 'other';
-        files.push({ name: e.name, fullPath: full, ext: ext.slice(1), size: stat?.size || 0, modified: stat?.mtime || null, type, displayable: isBrowserImage(e.name) });
-      }
-    }
-  } catch (_) {}
-  folders.sort((a, b) => a.name.localeCompare(b.name));
-  files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+function dbxPost(endpoint, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = https.request({
+      hostname: 'api.dropboxapi.com',
+      path: `/2/${endpoint}`,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cfg.dropboxToken}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    }, res => {
+      let buf = '';
+      res.on('data', c => buf += c);
+      res.on('end', () => { try { resolve(JSON.parse(buf)); } catch (e) { reject(e); } });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+function dbxEntry(e) {
+  const ext = path.extname(e.name).toLowerCase();
+  if (e['.tag'] === 'folder') return { name: e.name, fullPath: e.path_lower, count: 0, isFolder: true };
+  const type = IMAGE_EXTS.has(ext) ? 'image' : VIDEO_EXTS.has(ext) ? 'video' : AUDIO_EXTS.has(ext) ? 'audio' : DOC_EXTS.has(ext) ? 'doc' : 'other';
+  return { name: e.name, fullPath: e.path_lower, ext: ext.slice(1), size: e.size || 0, modified: e.server_modified || null, type, displayable: BROWSER_IMAGE_EXTS.has(ext) };
+}
+
+async function dbxList(folderPath) {
+  let result = await dbxPost('files/list_folder', { path: folderPath, limit: 2000 });
+  let entries = [...result.entries];
+  while (result.has_more) {
+    result = await dbxPost('files/list_folder/continue', { cursor: result.cursor });
+    entries.push(...result.entries);
+  }
+  const folders = entries.filter(e => e['.tag'] === 'folder').map(dbxEntry).sort((a, b) => a.name.localeCompare(b.name));
+  const files   = entries.filter(e => e['.tag'] === 'file').map(dbxEntry).sort((a, b) => new Date(b.modified) - new Date(a.modified));
   return { folders, files };
 }
 
-app.get('/dropbox', (req, res) => {
-  if (!cfg.dropbox) return res.json({ folders: [], files: [], configured: false });
-  const result = listDropboxDir(cfg.dropbox);
-  res.json({ ...result, configured: true });
+app.get('/dropbox', async (req, res) => {
+  if (!cfg.dropboxToken) return res.json({ folders: [], files: [], configured: false });
+  try { res.json({ ...(await dbxList('')), configured: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/dropbox/browse', (req, res) => {
-  if (!cfg.dropbox) return res.status(503).json({ error: 'Dropbox not configured' });
-  const rel = (req.query.path || '').replace(/^\/+/, '');
-  const target = rel ? path.join(cfg.dropbox, rel) : cfg.dropbox;
-  if (!target.startsWith(cfg.dropbox)) return res.status(403).end();
-  const result = listDropboxDir(target);
-  res.json(result);
+app.get('/dropbox/browse', async (req, res) => {
+  if (!cfg.dropboxToken) return res.status(503).json({ error: 'Dropbox not configured' });
+  try { res.json(await dbxList(req.query.path || '')); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/dropbox/file', (req, res) => {
-  const fp = req.query.path;
-  if (!cfg.dropbox || !fp || !fp.startsWith(cfg.dropbox)) return res.status(403).end();
-  res.sendFile(fp);
+  if (!cfg.dropboxToken || !req.query.path) return res.status(403).end();
+  const apiReq = https.request({
+    hostname: 'content.dropboxapi.com',
+    path: '/2/files/download',
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${cfg.dropboxToken}`,
+      'Dropbox-API-Arg': JSON.stringify({ path: req.query.path }),
+    },
+  }, upstream => {
+    if (upstream.statusCode >= 400) return res.status(upstream.statusCode).end();
+    res.set('Content-Type', upstream.headers['content-type'] || 'application/octet-stream');
+    res.set('Cache-Control', 'public, max-age=3600');
+    upstream.pipe(res);
+  });
+  apiReq.on('error', err => res.status(500).json({ error: err.message }));
+  apiReq.end();
 });
 
 // ── Health & NAS ──────────────────────────────────────────────────────────────
@@ -766,7 +789,7 @@ app.get('/health', (req, res) => {
     archive: reachable(cfg.archive),
     studio:  reachable(cfg.studio),
     videos:  reachable(cfg.videos),
-    dropbox: reachable(cfg.dropbox),
+    dropbox: !!cfg.dropboxToken,
     shots:   cfg.shots.map(p => ({ path: p, ok: reachable(p) })),
     nas:     cfg.nas?.shares || [],
   });

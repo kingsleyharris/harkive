@@ -50,10 +50,10 @@ module.exports = {
   music: [],
 
   // ── Dropbox ───────────────────────────────────────────────────────────────
-  // Root of your local Dropbox sync folder.
-  // On modern macOS this is usually ~/Library/CloudStorage/Dropbox
-  // or ~/Dropbox for older desktop app installs.
-  dropbox: '~/Dropbox',
+  // Dropbox API access token. Get one at:
+  // https://www.dropbox.com/developers/apps → create app → generate token
+  // Or set DROPBOX_TOKEN env var instead of putting it here.
+  dropboxToken: process.env.DROPBOX_TOKEN || null,
 
   // ── Notion (optional) ─────────────────────────────────────────────────────
   // Set NOTION_TOKEN in your environment or .env file.

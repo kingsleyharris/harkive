@@ -28,7 +28,7 @@ const cfg = {
   archive:    expand(raw.archive)    || null,
   studio:     expand(raw.studio)     || null,
   videos:     expand(raw.videos)     || null,
-  dropbox:    expand(raw.dropbox)    || null,
+  dropboxToken: raw.dropboxToken || process.env.DROPBOX_TOKEN || null,
   shots:      expandArr(raw.shots),
   tagsFile:   expand(raw.tagsFile)   || path.join(os.homedir(), '.harkive', 'shots-tags.json'),
   appScreens: expandArr(raw.appScreens),
@@ -39,7 +39,7 @@ const cfg = {
 
 // All configured roots — used for security checks on /image requests
 cfg.allowedRoots = [
-  cfg.photos, cfg.docs, cfg.archive, cfg.studio, cfg.videos, cfg.dropbox,
+  cfg.photos, cfg.docs, cfg.archive, cfg.studio, cfg.videos,
   ...cfg.shots, ...cfg.appScreens, ...cfg.music,
   path.join(os.homedir(), '.harkive'),
 ].filter(Boolean);

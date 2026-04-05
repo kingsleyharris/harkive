@@ -18,26 +18,26 @@ function FileIcon({ ext, type }) {
 }
 
 export default function DropboxBrowser() {
-  const [stack, setStack]       = useState([]); // [{name, rel}]
+  // stack entries: { name, apiPath } where apiPath is the Dropbox API path (e.g. "/folio")
+  const [stack, setStack]       = useState([]);
   const [contents, setContents] = useState(null);
-  const [lightbox, setLightbox] = useState(null); // index into contents.files
+  const [lightbox, setLightbox] = useState(null);
 
-  const currentRel = stack.map(s => s.rel).join('/');
+  const currentApiPath = stack.length ? stack[stack.length - 1].apiPath : null;
 
   useEffect(() => {
     setContents(null);
-    const url = currentRel
-      ? `/dropbox/browse?path=${encodeURIComponent(currentRel)}`
+    const url = currentApiPath
+      ? `/dropbox/browse?path=${encodeURIComponent(currentApiPath)}`
       : '/dropbox';
     fetch(url)
       .then(r => r.json())
       .then(setContents)
       .catch(() => setContents({ folders: [], files: [], error: true }));
-  }, [currentRel]);
+  }, [currentApiPath]);
 
   function enter(folder) {
-    const rel = currentRel ? `${currentRel}/${folder.name}` : folder.name;
-    setStack(prev => [...prev, { name: folder.name, rel }]);
+    setStack(prev => [...prev, { name: folder.name, apiPath: folder.fullPath }]);
     setLightbox(null);
   }
 
@@ -51,11 +51,12 @@ export default function DropboxBrowser() {
     setLightbox(null);
   }
 
-  if (contents && !contents.configured && !currentRel) {
+  if (contents && !contents.configured && !currentApiPath) {
     return (
       <div className="empty-state">
-        Dropbox not configured. Add <code>dropbox: '~/Dropbox'</code> to your{' '}
-        <code>harkive.config.js</code>.
+        Add <code>dropboxToken</code> to your <code>harkive.config.js</code>.
+        <br />
+        Get a token at dropbox.com/developers → your app → generate access token.
       </div>
     );
   }
