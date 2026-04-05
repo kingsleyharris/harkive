@@ -566,6 +566,31 @@ app.get('/dashboard', (req, res) => {
     } catch (_) { stats.dropboxFolders = 0; stats.dropboxFiles = 0; }
   } else { stats.dropboxFolders = 0; stats.dropboxFiles = 0; }
 
+  if (cfg.shots.length) {
+    try {
+      const years = new Set();
+      let shotCount = 0;
+      for (const root of cfg.shots) {
+        function countShots(dir) {
+          try {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (e.isDirectory() && !e.name.startsWith('.')) {
+                countShots(path.join(dir, e.name));
+              } else if (isBrowserImage(e.name)) {
+                shotCount++;
+                const m = e.name.match(/(\d{4})/);
+                if (m) years.add(m[1]);
+              }
+            }
+          } catch (_) {}
+        }
+        countShots(root);
+      }
+      stats.shotYears = years.size;
+      stats.shotCount = shotCount;
+    } catch (_) { stats.shotYears = 0; stats.shotCount = 0; }
+  } else { stats.shotYears = 0; stats.shotCount = 0; }
+
   res.json(stats);
 });
 
@@ -618,6 +643,39 @@ app.get('/notion/page/:id', async (req, res) => {
     const title = page.properties?.title ? richText(page.properties.title.title) : page.properties?.Name ? richText(page.properties.Name.title) : 'Untitled';
     res.json({ id: page.id, title, icon: page.icon?.emoji || null, url: page.url, blocks: blocksResp.results });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Fetch all image blocks from a page (paginated)
+app.get('/notion/page-images/:id', async (req, res) => {
+  if (!notionCheck(res)) return;
+  try {
+    const images = [];
+    let cursor;
+    do {
+      const r = await notion.blocks.children.list({ block_id: req.params.id, page_size: 100, start_cursor: cursor });
+      for (const b of r.results) {
+        if (b.type === 'image') {
+          const src = b.image?.file?.url || b.image?.external?.url || null;
+          if (src) images.push({ id: b.id, url: `/notion/proxy?url=${encodeURIComponent(src)}`, caption: (b.image?.caption || []).map(t => t.plain_text).join('') });
+        }
+      }
+      cursor = r.has_more ? r.next_cursor : null;
+    } while (cursor);
+    res.json(images);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Proxy Notion signed image URLs (they expire, can't be used directly from browser)
+const https = require('https');
+app.get('/notion/proxy', (req, res) => {
+  const url = req.query.url;
+  if (!url || !url.startsWith('https://')) return res.status(400).end();
+  https.get(url, (upstream) => {
+    if (upstream.statusCode >= 400) return res.status(upstream.statusCode).end();
+    res.set('Content-Type', upstream.headers['content-type'] || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=300');
+    upstream.pipe(res);
+  }).on('error', (err) => res.status(500).json({ error: err.message }));
 });
 
 app.get('/notion/db/:id', async (req, res) => {

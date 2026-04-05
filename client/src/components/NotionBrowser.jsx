@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 function BlockRenderer({ block }) {
   const t = block.type;
@@ -36,6 +36,18 @@ function BlockRenderer({ block }) {
       <span>{text(block.callout.rich_text)}</span>
     </div>
   );
+  if (t === 'image') {
+    const src = block.image?.file?.url || block.image?.external?.url;
+    const caption = (block.image?.caption || []).map(r => r.plain_text).join('');
+    if (!src) return null;
+    const proxied = `/notion/proxy?url=${encodeURIComponent(src)}`;
+    return (
+      <figure className="notion-image">
+        <img src={proxied} alt={caption} loading="lazy" />
+        {caption && <figcaption>{caption}</figcaption>}
+      </figure>
+    );
+  }
   return null;
 }
 
@@ -50,6 +62,8 @@ export default function NotionBrowser() {
   const [databases, setDatabases] = useState([]);
   const [selected, setSelected] = useState(null);   // { type: 'page'|'db', id, title }
   const [content, setContent] = useState(null);
+  const [pageImages, setPageImages] = useState(null); // array of image blocks if gallery mode
+  const [lightboxIdx, setLightboxIdx] = useState(null);
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('pages'); // 'pages' | 'databases'
@@ -67,8 +81,17 @@ export default function NotionBrowser() {
   function openPage(page) {
     setSelected({ type: 'page', ...page });
     setContent(null);
+    setPageImages(null);
+    setLightboxIdx(null);
     setLoading(true);
-    fetch(`/notion/page/${page.id}`).then(r => r.json()).then(d => { setContent(d); setLoading(false); });
+    Promise.all([
+      fetch(`/notion/page/${page.id}`).then(r => r.json()),
+      fetch(`/notion/page-images/${page.id}`).then(r => r.json()),
+    ]).then(([d, imgs]) => {
+      setContent(d);
+      setPageImages(imgs.length > 0 ? imgs : null);
+      setLoading(false);
+    });
   }
 
   function openDb(db) {
@@ -111,15 +134,41 @@ export default function NotionBrowser() {
 
   // Page detail view
   if (selected?.type === 'page') {
+    const isGallery = pageImages && pageImages.length > 0;
     return (
       <div>
         <div className="breadcrumb" style={{ marginBottom: 24 }}>
-          <span className="crumb" onClick={() => { setSelected(null); setContent(null); }}>Notion</span>
+          <span className="crumb" onClick={() => { setSelected(null); setContent(null); setPageImages(null); setLightboxIdx(null); }}>Notion</span>
           <span className="sep">/</span>
           <span className="crumb active">{selected.icon} {selected.title}</span>
         </div>
         {loading && <div className="empty-state">Loading…</div>}
-        {content && (
+        {!loading && content && isGallery && (
+          <>
+            <div className="notion-page-title" style={{ marginBottom: 20 }}>
+              {content.icon && <span style={{ marginRight: 10 }}>{content.icon}</span>}
+              {content.title}
+              <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 10, fontWeight: 400 }}>{pageImages.length} images</span>
+            </div>
+            <div className="photo-grid">
+              {pageImages.map((img, i) => (
+                <div key={img.id} className="photo-cell" onClick={() => setLightboxIdx(i)}>
+                  <img src={img.url} loading="lazy" alt={img.caption || ''} />
+                </div>
+              ))}
+            </div>
+            {lightboxIdx !== null && (
+              <div className="lightbox" onClick={() => setLightboxIdx(null)}>
+                <button className="lb-prev" onClick={e => { e.stopPropagation(); setLightboxIdx(i => Math.max(0, i - 1)); }}>‹</button>
+                <div className="lb-content" onClick={e => e.stopPropagation()}>
+                  <img src={pageImages[lightboxIdx].url} alt={pageImages[lightboxIdx].caption || ''} />
+                </div>
+                <button className="lb-next" onClick={e => { e.stopPropagation(); setLightboxIdx(i => Math.min(pageImages.length - 1, i + 1)); }}>›</button>
+              </div>
+            )}
+          </>
+        )}
+        {!loading && content && !isGallery && (
           <div className="notion-page">
             <div className="notion-page-title">
               {content.icon && <span style={{ marginRight: 10 }}>{content.icon}</span>}

@@ -44,6 +44,12 @@ export default function Dashboard({ onNavigate }) {
             <StatCard value={stats.studioProjects} label="Projects" sub={`${stats.studioTracks} sessions total`} onClick={() => onNavigate('studio')} />
           </div>
 
+          <div className="section-heading" style={{ marginBottom: 12 }}>Shots</div>
+          <div className="stat-grid" style={{ marginBottom: 32 }}>
+            <StatCard value={stats.shotYears} label="Years" onClick={() => onNavigate('shots')} />
+            <StatCard value={stats.shotCount} label="Screenshots" onClick={() => onNavigate('shots')} />
+          </div>
+
           <div className="section-heading" style={{ marginBottom: 12 }}>Library</div>
           <div className="stat-grid" style={{ marginBottom: 32 }}>
             <StatCard value={stats.docCategories} label="Doc Categories" onClick={() => onNavigate('docs')} />
