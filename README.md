@@ -17,6 +17,7 @@ A personal media archive browser for your Mac. Browse photos, documents, videos,
 | **Notion** | Live Notion workspace browser |
 | **Documents** | PDFs, docs, keynotes organized by category |
 | **Projects** | App design screens and music files |
+| **Dropbox** | Full Dropbox account browser — folders, images, docs |
 
 ## Requirements
 
@@ -58,6 +59,8 @@ module.exports = {
   appScreens: [],
   music: [],
   notionToken: process.env.NOTION_TOKEN || null,
+  dropboxAppKey:    'your_app_key',    // from dropbox.com/developers
+  dropboxAppSecret: 'your_app_secret',
 };
 ```
 
@@ -79,6 +82,17 @@ Create a `.env` file in the project root:
 NOTION_TOKEN=secret_xxx
 ANTHROPIC_API_KEY=sk-ant-xxx
 ```
+
+## Dropbox
+
+1. Go to [dropbox.com/developers/apps](https://www.dropbox.com/developers/apps) → create a Scoped app with Full Dropbox access
+2. Under **Permissions**, enable `files.metadata.read` and `files.content.read`
+3. Under **OAuth 2 → Redirect URIs**, add `http://localhost:3001/dropbox/auth/callback`
+4. Copy your **App key** and **App secret** into `harkive.config.js`
+5. Launch the app, then visit `http://localhost:3001/dropbox/auth` once to authorize
+6. Tokens are saved to `~/.harkive/dropbox-tokens.json` and refresh automatically
+
+> **Note:** `/dropbox` must be present in `client/vite.config.js` proxy config — it's already included, but if you ever see "not configured" in the Dropbox tab, check the proxy first.
 
 ## AI Vision Tagging (Shots tab)
 
