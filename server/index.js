@@ -11,6 +11,17 @@ const cache = require('./cache');
 const app = express();
 app.use(cors());
 app.use(compression());
+app.use(express.json());
+
+// ── Async I/O with timeout (prevents kernel panic on hung NAS) ───────────────
+const fsp = fs.promises;
+
+function withTimeout(promise, ms = 5000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('I/O timeout')), ms)),
+  ]);
+}
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
@@ -38,13 +49,40 @@ function allowedPath(fp) {
   return fp && cfg.allowedRoots.some(r => fp.startsWith(r));
 }
 
-function collectMedia(dir) {
+// Check if a /Volumes mount is responsive before traversing.
+// A hung SMB mount will block readdirSync indefinitely, starving the
+// event loop and eventually causing a kernel watchdog reboot.
+const _mountOk = {};       // path → { ok: bool, checkedAt: ms }
+function isMountReady(dir) {
+  const mount = dir.match(/^\/Volumes\/[^/]+/);
+  if (!mount) return true;                         // local path, always fine
+  const key = mount[0];
+  const entry = _mountOk[key];
+  if (entry && Date.now() - entry.checkedAt < 10_000) return entry.ok;  // cache 10s
+  try {
+    fs.accessSync(key, fs.constants.R_OK);         // fast kernel check, no traversal
+    _mountOk[key] = { ok: true, checkedAt: Date.now() };
+    return true;
+  } catch (_) {
+    _mountOk[key] = { ok: false, checkedAt: Date.now() };
+    return false;
+  }
+}
+
+function collectMedia(dir, depth = 0, seen) {
+  if (depth > 12) return [];
+  if (!seen) seen = new Set();
+  if (!isMountReady(dir)) return [];               // skip hung volumes
+  let real;
+  try { real = fs.realpathSync(dir); } catch (_) { return []; }
+  if (seen.has(real)) return [];
+  seen.add(real);
   const results = [];
   try {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       if (e.name.startsWith('.')) continue;
       const full = path.join(dir, e.name);
-      if (e.isDirectory()) results.push(...collectMedia(full));
+      if (e.isDirectory()) results.push(...collectMedia(full, depth + 1, seen));
       else if (isImage(e.name) || isVideo(e.name))
         results.push({ name: e.name, fullPath: full, type: isVideo(e.name) ? 'video' : 'image' });
     }
@@ -137,12 +175,13 @@ app.get('/docs/:category', (req, res) => {
   if (!catPath) return res.status(403).end();
   try {
     const files = [];
-    function walk(dir, rel) {
+    function walk(dir, rel, depth = 0) {
+      if (depth > 12) return;
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.name.startsWith('.')) continue;
         const fullPath = path.join(dir, e.name);
         const relPath = rel ? `${rel}/${e.name}` : e.name;
-        if (e.isDirectory()) walk(fullPath, relPath);
+        if (e.isDirectory()) walk(fullPath, relPath, depth + 1);
         else if (isDoc(e.name)) {
           const stat = fs.statSync(fullPath);
           files.push({ name: e.name, path: relPath, ext: path.extname(e.name).slice(1), size: stat.size, modified: stat.mtime });
@@ -195,12 +234,13 @@ app.get('/projects/app-screens/files', (req, res) => {
 app.get('/projects/music', (req, res) => {
   if (!cfg.music.length) return res.json([]);
   const tracks = [];
-  function walkAudio(dir, rel) {
+  function walkAudio(dir, rel, depth = 0) {
+    if (depth > 12) return;
     try {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.name.startsWith('.')) continue;
         const full = path.join(dir, e.name);
-        if (e.isDirectory()) walkAudio(full, e.name);
+        if (e.isDirectory()) walkAudio(full, e.name, depth + 1);
         else if (AUDIO_EXTS.has(path.extname(e.name).toLowerCase())) {
           const stat = fs.statSync(full);
           tracks.push({ name: e.name, fullPath: full, artist: rel || '', ext: path.extname(e.name).slice(1), size: stat.size });
@@ -253,12 +293,13 @@ app.get('/search', (req, res) => {
   const docs = [];
   if (cfg.docs) {
     try {
-      function walkDocs(dir, cat, rel) {
+      function walkDocs(dir, cat, rel, depth = 0) {
+        if (depth > 12) return;
         for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
           if (e.name.startsWith('.')) continue;
           const fullPath = path.join(dir, e.name);
           const relPath = rel ? `${rel}/${e.name}` : e.name;
-          if (e.isDirectory()) walkDocs(fullPath, cat, relPath);
+          if (e.isDirectory()) walkDocs(fullPath, cat, relPath, depth + 1);
           else if (isDoc(e.name) && e.name.toLowerCase().includes(q)) {
             const stat = fs.statSync(fullPath);
             docs.push({ category: cat, name: e.name, path: relPath, ext: path.extname(e.name).slice(1), size: stat.size, modified: stat.mtime });
@@ -283,11 +324,16 @@ function loadTags() {
 }
 
 // Watch tags file — invalidate caches whenever tagger writes new tags
+// Debounced: macOS fs.watch fires multiple times per write
+let _watchDebounce = null;
 try {
   fs.watch(cfg.tagsFile, () => {
-    _tagsCache = null;
-    cache.invalidate('shots');
-    cache.invalidate('shots-progress');
+    clearTimeout(_watchDebounce);
+    _watchDebounce = setTimeout(() => {
+      _tagsCache = null;
+      cache.invalidate('shots');
+      cache.invalidate('shots-progress');
+    }, 1000);
   });
 } catch (_) {}
 
@@ -487,12 +533,13 @@ app.get('/studio/albums', (req, res) => {
 app.get('/videos', (req, res) => {
   if (!cfg.videos) return res.json([]);
   const files = [];
-  function walkVideo(dir) {
+  function walkVideo(dir, depth = 0) {
+    if (depth > 12) return;
     try {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.name.startsWith('.')) continue;
         const full = path.join(dir, e.name);
-        if (e.isDirectory()) walkVideo(full);
+        if (e.isDirectory()) walkVideo(full, depth + 1);
         else if (isVideo(e.name)) {
           const stat = fs.statSync(full);
           files.push({ name: e.name, fullPath: full, ext: path.extname(e.name).slice(1), size: stat.size });
@@ -553,7 +600,7 @@ app.get('/dashboard', (req, res) => {
   if (cfg.videos) {
     try {
       let videoCount = 0;
-      function countVideos(dir) { try { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.isDirectory() && !e.name.startsWith('.')) countVideos(path.join(dir, e.name)); else if (isVideo(e.name)) videoCount++; } } catch (_) {} }
+      function countVideos(dir, depth = 0) { if (depth > 12) return; try { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.isDirectory() && !e.name.startsWith('.')) countVideos(path.join(dir, e.name), depth + 1); else if (isVideo(e.name)) videoCount++; } } catch (_) {} }
       countVideos(cfg.videos);
       stats.videos = videoCount;
     } catch (_) { stats.videos = 0; }
@@ -585,6 +632,11 @@ app.get('/dashboard', (req, res) => {
       stats.shotCount = shotCount;
     } catch (_) { stats.shotYears = 0; stats.shotCount = 0; }
   } else { stats.shotYears = 0; stats.shotCount = 0; }
+
+  try {
+    const yt = readYT();
+    stats.youtubeVideos = yt.length;
+  } catch (_) { stats.youtubeVideos = 0; }
 
   res.json(stats);
 });
@@ -830,6 +882,109 @@ app.get('/dropbox/file', async (req, res) => {
   });
   apiReq.on('error', err => res.status(500).json({ error: err.message }));
   apiReq.end();
+});
+
+// ── Knowledge ─────────────────────────────────────────────────────────────────
+
+const KNOWLEDGE_FILE = path.join(os.homedir(), '.harkive', 'knowledge.json');
+
+function readKnowledge() {
+  try { return JSON.parse(fs.readFileSync(KNOWLEDGE_FILE, 'utf8')); } catch (_) { return []; }
+}
+
+function writeKnowledge(items) {
+  fs.mkdirSync(path.dirname(KNOWLEDGE_FILE), { recursive: true });
+  fs.writeFileSync(KNOWLEDGE_FILE, JSON.stringify(items, null, 2));
+}
+
+app.get('/knowledge', (req, res) => {
+  res.json(readKnowledge());
+});
+
+app.post('/knowledge', (req, res) => {
+  const { title, source, path: itemPath, tags, notes } = req.body || {};
+  if (!source || !itemPath) return res.status(400).json({ error: 'source and path required' });
+  const items = readKnowledge();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const item = { id, title: title || itemPath.split('/').pop(), source, path: itemPath, tags: tags || [], notes: notes || '', addedAt: new Date().toISOString() };
+  items.unshift(item);
+  writeKnowledge(items);
+  res.json(item);
+});
+
+app.delete('/knowledge/:id', (req, res) => {
+  const items = readKnowledge().filter(i => i.id !== req.params.id);
+  writeKnowledge(items);
+  res.json({ ok: true });
+});
+
+// ── YouTube History ───────────────────────────────────────────────────────────
+
+const YT_FILE = path.join(os.homedir(), '.harkive', 'youtube-history.json');
+
+function readYT() {
+  try { return JSON.parse(fs.readFileSync(YT_FILE, 'utf8')); } catch (_) { return []; }
+}
+
+// POST /youtube/ingest  { filePath: '/path/to/watch-history.json' }
+app.post('/youtube/ingest', (req, res) => {
+  const { filePath } = req.body || {};
+  if (!filePath) return res.status(400).json({ error: 'filePath required' });
+  const src = filePath.replace(/^~/, os.homedir());
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(src, 'utf8')); }
+  catch (e) { return res.status(400).json({ error: `Cannot read file: ${e.message}` }); }
+
+  const entries = [];
+  for (const item of raw) {
+    // Skip non-watch entries (channel visits, searches, etc.)
+    if (!item.titleUrl || !item.titleUrl.includes('watch?v=')) continue;
+    const videoId = new URL(item.titleUrl).searchParams.get('v');
+    if (!videoId) continue;
+    const title = (item.title || '').replace(/^Watched\s+/i, '').trim();
+    const channel = item.subtitles?.[0]?.name || null;
+    const channelUrl = item.subtitles?.[0]?.url || null;
+    entries.push({ videoId, title, channel, channelUrl, watchedAt: item.time });
+  }
+
+  fs.mkdirSync(path.dirname(YT_FILE), { recursive: true });
+  fs.writeFileSync(YT_FILE, JSON.stringify(entries, null, 2));
+  res.json({ ok: true, total: entries.length });
+});
+
+// GET /youtube?q=&channel=&from=&to=&limit=&offset=
+app.get('/youtube', (req, res) => {
+  const all = readYT();
+  if (!all.length) return res.json({ entries: [], total: 0, channels: [] });
+
+  const { q, channel, from, to } = req.query;
+  const limit  = Math.min(parseInt(req.query.limit)  || 100, 500);
+  const offset = parseInt(req.query.offset) || 0;
+
+  let entries = all;
+  if (q)       { const lq = q.toLowerCase(); entries = entries.filter(e => e.title.toLowerCase().includes(lq) || (e.channel || '').toLowerCase().includes(lq)); }
+  if (channel) { entries = entries.filter(e => e.channel === channel); }
+  if (from)    { entries = entries.filter(e => e.watchedAt >= from); }
+  if (to)      { entries = entries.filter(e => e.watchedAt <= to); }
+
+  // Top channels from full filtered set
+  const channelCounts = {};
+  entries.forEach(e => { if (e.channel) channelCounts[e.channel] = (channelCounts[e.channel] || 0) + 1; });
+  const channels = Object.entries(channelCounts).sort((a, b) => b[1] - a[1]).slice(0, 50).map(([name, count]) => ({ name, count }));
+
+  res.json({ entries: entries.slice(offset, offset + limit), total: entries.length, channels });
+});
+
+// GET /youtube/stats
+app.get('/youtube/stats', (req, res) => {
+  const all = readYT();
+  if (!all.length) return res.json({ total: 0 });
+  const channelCounts = {};
+  all.forEach(e => { if (e.channel) channelCounts[e.channel] = (channelCounts[e.channel] || 0) + 1; });
+  const topChannel = Object.entries(channelCounts).sort((a, b) => b[1] - a[1])[0];
+  const earliest = all[all.length - 1]?.watchedAt?.slice(0, 4);
+  const latest   = all[0]?.watchedAt?.slice(0, 4);
+  res.json({ total: all.length, topChannel: topChannel?.[0], topChannelCount: topChannel?.[1], earliest, latest });
 });
 
 // ── Health & NAS ──────────────────────────────────────────────────────────────

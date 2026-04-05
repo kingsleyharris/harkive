@@ -37,4 +37,12 @@ function wrap(key, ttlMs, fn) {
   };
 }
 
+// Sweep expired entries every 60s to prevent memory accumulation
+setInterval(() => {
+  const now = Date.now();
+  for (const key of Object.keys(store)) {
+    if (now > store[key].expiresAt) delete store[key];
+  }
+}, 60_000).unref();
+
 module.exports = { get, set, invalidate, invalidatePrefix, wrap };
