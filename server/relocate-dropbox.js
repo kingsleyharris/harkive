@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
  * relocate-dropbox.js
- * Downloads every file from Dropbox to /Volumes/KingsleyII/Dropbox/
+ * Downloads every file from Dropbox to a local destination folder,
  * preserving folder structure, then deletes from Dropbox.
  *
  * Safe: only deletes from Dropbox after local file is verified.
  * Resume-friendly: skips files already present at the destination.
  *
  * Usage:
- *   node server/relocate-dropbox.js            # move everything
- *   node server/relocate-dropbox.js --dry-run  # preview only, no changes
+ *   node server/relocate-dropbox.js /path/to/dest            # move everything
+ *   node server/relocate-dropbox.js /path/to/dest --dry-run  # preview only
  */
 
 const https = require('https');
@@ -18,8 +18,13 @@ const path  = require('path');
 const os    = require('os');
 
 const DRY_RUN  = process.argv.includes('--dry-run');
-const DEST     = '/Volumes/KingsleyII/Dropbox';
+const DEST     = process.argv.find(a => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1]);
 const TOKEN_FILE = path.join(os.homedir(), '.harkive', 'dropbox-tokens.json');
+
+if (!DEST) {
+  console.error('Usage: node server/relocate-dropbox.js /path/to/destination [--dry-run]');
+  process.exit(1);
+}
 
 // ── Load tokens ───────────────────────────────────────────────────────────────
 
@@ -32,7 +37,7 @@ try {
 }
 
 if (!fs.existsSync(DEST)) {
-  console.error(`Destination not found: ${DEST}\nMake sure KingsleyII is mounted.`);
+  console.error(`Destination not found: ${DEST}\nMake sure the volume is mounted.`);
   process.exit(1);
 }
 
@@ -187,7 +192,7 @@ async function main() {
 
   console.log(`\n─────────────────────────────`);
   console.log(`Moved:   ${moved}`);
-  console.log(`Skipped: ${skipped} (already on KingsleyII)`);
+  console.log(`Skipped: ${skipped} (already at destination)`);
   if (failed) console.log(`Failed:  ${failed} (still in Dropbox)`);
   console.log(`─────────────────────────────\n`);
 
