@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function LightBox({ photos, index, year, event, api, onClose, onChange }) {
   const photo = photos[index];
+  const [cursorSide, setCursorSide] = useState(null); // 'left' | 'right'
 
   useEffect(() => {
     function onKey(e) {
@@ -13,28 +14,51 @@ export default function LightBox({ photos, index, year, event, api, onClose, onC
     return () => window.removeEventListener('keydown', onKey);
   }, [index, photos.length]);
 
-  // Skip non-displayable files when navigating
-  const displayable = photos.filter(p => p.displayable);
-  const displayIndex = displayable.findIndex(p => p.fullPath === photo?.fullPath);
-
   if (!photo || !photo.displayable) return null;
 
   const src = `/image?path=${encodeURIComponent(photo.fullPath)}`;
+  const hasPrev = index > 0;
+  const hasNext = index < photos.length - 1;
+
+  function handleImgClick(e) {
+    e.stopPropagation();
+    const { left, width } = e.currentTarget.getBoundingClientRect();
+    if (e.clientX - left < width / 2) { if (hasPrev) onChange(index - 1); }
+    else { if (hasNext) onChange(index + 1); }
+  }
+
+  function handleImgMove(e) {
+    const { left, width } = e.currentTarget.getBoundingClientRect();
+    setCursorSide(e.clientX - left < width / 2 ? 'left' : 'right');
+  }
+
+  function imgCursor() {
+    if (cursorSide === 'left') return hasPrev ? 'w-resize' : 'default';
+    if (cursorSide === 'right') return hasNext ? 'e-resize' : 'default';
+    return 'default';
+  }
 
   return (
     <div className="lightbox" onClick={onClose}>
       <button className="lb-close" onClick={onClose}>✕</button>
-      {index > 0 && (
+      {hasPrev && (
         <button className="lb-prev" onClick={e => { e.stopPropagation(); onChange(index - 1); }}>‹</button>
       )}
       <div className="lb-content" onClick={e => e.stopPropagation()}>
         {photo.type === 'video' ? (
           <video src={src} controls autoPlay />
         ) : (
-          <img src={src} alt={photo.name} />
+          <img
+            src={src}
+            alt={photo.name}
+            style={{ cursor: imgCursor() }}
+            onClick={handleImgClick}
+            onMouseMove={handleImgMove}
+            onMouseLeave={() => setCursorSide(null)}
+          />
         )}
       </div>
-      {index < photos.length - 1 && (
+      {hasNext && (
         <button className="lb-next" onClick={e => { e.stopPropagation(); onChange(index + 1); }}>›</button>
       )}
       <div className="lb-counter">{index + 1} / {photos.length}</div>

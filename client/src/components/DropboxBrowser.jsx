@@ -188,8 +188,13 @@ export default function DropboxBrowser() {
           <img
             src={`/dropbox/file?path=${encodeURIComponent(images[lightbox].fullPath)}`}
             alt={images[lightbox].name}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 4 }}
-            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 4, cursor: 'pointer' }}
+            onClick={e => {
+              e.stopPropagation();
+              const { left, width } = e.currentTarget.getBoundingClientRect();
+              if (e.clientX - left < width / 2) { if (lightbox > 0) setLightbox(lightbox - 1); }
+              else { if (lightbox < images.length - 1) setLightbox(lightbox + 1); }
+            }}
           />
           {lightbox > 0 && (
             <button
