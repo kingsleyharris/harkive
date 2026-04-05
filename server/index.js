@@ -1,4 +1,5 @@
 const express = require('express');
+const os = require('os');
 const cors = require('cors');
 const compression = require('compression');
 const fs = require('fs');
@@ -697,29 +698,65 @@ app.get('/notion/db/:id', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Dropbox API ───────────────────────────────────────────────────────────────
+// ── Dropbox OAuth + API ───────────────────────────────────────────────────────
 
-function dbxPost(endpoint, body) {
+const DBX_REDIRECT = 'http://localhost:3001/dropbox/auth/callback';
+const DBX_TOKEN_FILE = path.join(os.homedir(), '.harkive', 'dropbox-tokens.json');
+
+// In-memory token state
+let dbxTokens = { accessToken: cfg.dropboxToken || null, refreshToken: null };
+try {
+  const saved = JSON.parse(fs.readFileSync(DBX_TOKEN_FILE, 'utf8'));
+  if (saved.refreshToken) dbxTokens = saved;
+} catch (_) {}
+
+function saveDbxTokens() {
+  try {
+    fs.mkdirSync(path.dirname(DBX_TOKEN_FILE), { recursive: true });
+    fs.writeFileSync(DBX_TOKEN_FILE, JSON.stringify(dbxTokens));
+  } catch (_) {}
+}
+
+function httpsPost(hostname, urlPath, headers, body) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
-    const req = https.request({
-      hostname: 'api.dropboxapi.com',
-      path: `/2/${endpoint}`,
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.dropboxToken}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data),
-      },
-    }, res => {
+    const data = typeof body === 'string' ? body : JSON.stringify(body);
+    const req = https.request({ hostname, path: urlPath, method: 'POST', headers: { ...headers, 'Content-Length': Buffer.byteLength(data) } }, res => {
       let buf = '';
       res.on('data', c => buf += c);
-      res.on('end', () => { try { resolve(JSON.parse(buf)); } catch (e) { reject(e); } });
+      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(buf) }); } catch (e) { reject(e); } });
     });
     req.on('error', reject);
     req.write(data);
     req.end();
   });
+}
+
+async function dbxRefresh() {
+  if (!cfg.dropboxAppKey || !cfg.dropboxAppSecret || !dbxTokens.refreshToken) return false;
+  const r = await httpsPost('api.dropbox.com', '/oauth2/token',
+    { 'Content-Type': 'application/x-www-form-urlencoded' },
+    `grant_type=refresh_token&refresh_token=${encodeURIComponent(dbxTokens.refreshToken)}&client_id=${cfg.dropboxAppKey}&client_secret=${cfg.dropboxAppSecret}`
+  );
+  if (r.body.access_token) {
+    dbxTokens.accessToken = r.body.access_token;
+    saveDbxTokens();
+    return true;
+  }
+  return false;
+}
+
+function dbxConfigured() {
+  return !!(dbxTokens.accessToken || dbxTokens.refreshToken);
+}
+
+async function dbxPost(endpoint, body) {
+  if (!dbxTokens.accessToken && dbxTokens.refreshToken) await dbxRefresh();
+  const doCall = (token) => httpsPost('api.dropboxapi.com', `/2/${endpoint}`,
+    { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body
+  );
+  let r = await doCall(dbxTokens.accessToken);
+  if (r.status === 401 && await dbxRefresh()) r = await doCall(dbxTokens.accessToken);
+  return r.body;
 }
 
 function dbxEntry(e) {
@@ -731,6 +768,7 @@ function dbxEntry(e) {
 
 async function dbxList(folderPath) {
   let result = await dbxPost('files/list_folder', { path: folderPath, limit: 2000 });
+  if (!result.entries) throw new Error(result.error_summary || JSON.stringify(result));
   let entries = [...result.entries];
   while (result.has_more) {
     result = await dbxPost('files/list_folder/continue', { cursor: result.cursor });
@@ -741,28 +779,49 @@ async function dbxList(folderPath) {
   return { folders, files };
 }
 
+// OAuth routes
+app.get('/dropbox/auth', (req, res) => {
+  if (!cfg.dropboxAppKey) return res.status(503).send('Add dropboxAppKey to harkive.config.js');
+  const url = `https://www.dropbox.com/oauth2/authorize?client_id=${cfg.dropboxAppKey}&response_type=code&redirect_uri=${encodeURIComponent(DBX_REDIRECT)}&token_access_type=offline`;
+  res.redirect(url);
+});
+
+app.get('/dropbox/auth/callback', async (req, res) => {
+  const code = req.query.code;
+  if (!code) return res.status(400).send('Missing code');
+  try {
+    const r = await httpsPost('api.dropbox.com', '/oauth2/token',
+      { 'Content-Type': 'application/x-www-form-urlencoded' },
+      `code=${encodeURIComponent(code)}&grant_type=authorization_code&redirect_uri=${encodeURIComponent(DBX_REDIRECT)}&client_id=${cfg.dropboxAppKey}&client_secret=${cfg.dropboxAppSecret}`
+    );
+    if (!r.body.access_token) return res.status(400).send(JSON.stringify(r.body));
+    dbxTokens = { accessToken: r.body.access_token, refreshToken: r.body.refresh_token };
+    saveDbxTokens();
+    res.send('<h2>Dropbox connected!</h2><p>You can close this tab and go back to Harkive.</p><script>window.close()</script>');
+  } catch (err) { res.status(500).send(err.message); }
+});
+
+// API routes
 app.get('/dropbox', async (req, res) => {
-  if (!cfg.dropboxToken) return res.json({ folders: [], files: [], configured: false });
+  if (!dbxConfigured()) return res.json({ folders: [], files: [], configured: false });
   try { res.json({ ...(await dbxList('')), configured: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/dropbox/browse', async (req, res) => {
-  if (!cfg.dropboxToken) return res.status(503).json({ error: 'Dropbox not configured' });
+  if (!dbxConfigured()) return res.status(503).json({ error: 'Dropbox not configured' });
   try { res.json(await dbxList(req.query.path || '')); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/dropbox/file', (req, res) => {
-  if (!cfg.dropboxToken || !req.query.path) return res.status(403).end();
+app.get('/dropbox/file', async (req, res) => {
+  if (!dbxConfigured() || !req.query.path) return res.status(403).end();
+  if (!dbxTokens.accessToken) await dbxRefresh();
   const apiReq = https.request({
     hostname: 'content.dropboxapi.com',
     path: '/2/files/download',
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${cfg.dropboxToken}`,
-      'Dropbox-API-Arg': JSON.stringify({ path: req.query.path }),
-    },
+    headers: { Authorization: `Bearer ${dbxTokens.accessToken}`, 'Dropbox-API-Arg': JSON.stringify({ path: req.query.path }) },
   }, upstream => {
     if (upstream.statusCode >= 400) return res.status(upstream.statusCode).end();
     res.set('Content-Type', upstream.headers['content-type'] || 'application/octet-stream');

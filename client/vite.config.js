@@ -24,6 +24,7 @@ export default defineConfig({
       '/dashboard': 'http://localhost:3001',
       '/health': 'http://localhost:3001',
       '/nas': 'http://localhost:3001',
+      '/dropbox': 'http://localhost:3001',
     }
   }
 })
