@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ShimmerImg from './ShimmerImg';
 
 function fmt(bytes) {
   if (!bytes) return '';
@@ -125,9 +126,8 @@ export default function DropboxBrowser() {
                     style={{ cursor: 'pointer' }}
                     onClick={() => setLightbox(i)}
                   >
-                    <img
+                    <ShimmerImg
                       src={`/dropbox/file?path=${encodeURIComponent(f.fullPath)}`}
-                      loading="lazy"
                       alt={f.name}
                     />
                   </div>

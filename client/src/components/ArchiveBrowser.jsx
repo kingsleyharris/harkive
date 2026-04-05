@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import LightBox from './LightBox';
 import DriveOffline from './DriveOffline';
+import ShimmerImg from './ShimmerImg';
 
 export default function ArchiveBrowser() {
   const [albums, setAlbums] = useState(null);
@@ -52,7 +53,7 @@ export default function ArchiveBrowser() {
               <div className="event-grid">
                 {sectionAlbums.map(a => (
                   <div key={a.dir} className="event-card" onClick={() => selectAlbum(a)}>
-                    <img src={`/image?path=${encodeURIComponent(a.cover)}`} loading="lazy" alt={a.label} />
+                    <ShimmerImg src={`/image?path=${encodeURIComponent(a.cover)}`} alt={a.label} aspectRatio="4/3" />
                     <div className="event-info">
                       <span className="event-name">{a.label}</span>
                       <span className="event-count">{a.count}</span>
@@ -77,7 +78,7 @@ export default function ArchiveBrowser() {
                   onClick={() => f.displayable && setLightbox(i)}
                 >
                   {f.displayable ? (
-                    <img src={`/image?path=${encodeURIComponent(f.fullPath)}`} loading="lazy" alt={f.name} />
+                    <ShimmerImg src={`/image?path=${encodeURIComponent(f.fullPath)}`} alt={f.name} />
                   ) : (
                     <div className="raw-placeholder">
                       <span className="raw-ext">{f.name.split('.').pop().toUpperCase()}</span>

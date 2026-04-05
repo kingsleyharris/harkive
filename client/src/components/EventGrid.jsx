@@ -1,13 +1,15 @@
+import ShimmerImg from './ShimmerImg';
+
 export default function EventGrid({ year, events, api, onSelect }) {
   return (
     <div className="event-grid">
       {events.map(event => (
         <div key={event.name} className="event-card" onClick={() => onSelect(event)}>
           {event.coverPath ? (
-            <img
+            <ShimmerImg
               src={`/cover?path=${encodeURIComponent(event.coverPath)}`}
-              loading="lazy"
               alt={event.name}
+              aspectRatio="4/3"
             />
           ) : (
             <div className="event-no-cover" />

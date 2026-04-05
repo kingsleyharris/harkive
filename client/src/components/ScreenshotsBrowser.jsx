@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import LightBox from './LightBox';
+import ShimmerImg from './ShimmerImg';
 
 const LABELS = {
   'team-patches': 'Team Patches',
@@ -64,7 +65,7 @@ export default function ScreenshotsBrowser() {
           <div className="photo-grid">
             {filtered.map((f, i) => (
               <div key={f.fullPath} className="photo-cell" onClick={() => setLightbox(i)}>
-                <img src={`/image?path=${encodeURIComponent(f.fullPath)}`} loading="lazy" alt={f.name} />
+                <ShimmerImg src={`/image?path=${encodeURIComponent(f.fullPath)}`} alt={f.name} />
               </div>
             ))}
             {filtered.length === 0 && <div className="empty-state">No matches.</div>}
@@ -94,7 +95,7 @@ export default function ScreenshotsBrowser() {
       <div className="event-grid">
         {albums.map(a => (
           <div key={a.dir} className="event-card" onClick={() => selectAlbum(a)}>
-            <img src={`/image?path=${encodeURIComponent(a.cover)}`} loading="lazy" alt={a.label} />
+            <ShimmerImg src={`/image?path=${encodeURIComponent(a.cover)}`} alt={a.label} aspectRatio="4/3" />
             <div className="event-info">
               <span className="event-name">{LABELS[a.label] || a.label}</span>
               <span className="event-count">{a.count}</span>

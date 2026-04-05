@@ -25,6 +25,23 @@
   --font:         -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont, sans-serif;
   --sidebar-w:    200px;
   --toolbar-h:    52px;
+  --shimmer-base: rgba(0,0,0,0.07);
+  --shimmer-shine: rgba(0,0,0,0.03);
+}
+
+/* ── Shimmer ─────────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg,
+    var(--shimmer-base)  25%,
+    var(--shimmer-shine) 50%,
+    var(--shimmer-base)  75%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
 }
 
 html, body { height: 100%; }
@@ -263,10 +280,10 @@ main::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
 .event-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .event-card:active { transform: translateY(0); }
 
-.event-card img {
+/* ShimmerImg wraps img in a div — target both for back-compat */
+.event-card img,
+.event-card > div {
   width: 100%;
-  aspect-ratio: 4/3;
-  object-fit: cover;
   display: block;
 }
 

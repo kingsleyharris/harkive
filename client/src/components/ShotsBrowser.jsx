@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react';
 import LightBox from './LightBox';
+import ShimmerImg from './ShimmerImg';
 
 const PAGE_SIZE = 100;
 
@@ -350,7 +351,7 @@ export default function ShotsBrowser() {
         <div className="shots-masonry">
           {visible.map((shot, i) => (
             <div key={shot.fullPath} className="shot-card" onClick={() => setLightbox(i)}>
-              <img src={`/image?path=${encodeURIComponent(shot.fullPath)}`} loading="lazy" alt={shot.name} />
+              <ShimmerImg src={`/image?path=${encodeURIComponent(shot.fullPath)}`} alt={shot.name} natural />
               <div className="shot-overlay">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span className="shot-source">{SOURCE_LABELS[shot.source] || shot.source}</span>

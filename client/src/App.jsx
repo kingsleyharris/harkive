@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import StartScreen from './components/StartScreen';
+import ShimmerImg from './components/ShimmerImg';
 import YearGrid from './components/YearGrid';
 import EventGrid from './components/EventGrid';
 import LightBox from './components/LightBox';
@@ -156,7 +157,7 @@ export default function App() {
                 {photos.map((f, i) => (
                   <div key={f.fullPath} className={`photo-cell${!f.displayable ? ' raw' : ''}`} onClick={() => f.displayable && setLightbox(i)}>
                     {f.displayable ? (
-                      <img src={`/image?path=${encodeURIComponent(f.fullPath)}`} loading="lazy" alt={f.name} />
+                      <ShimmerImg src={`/image?path=${encodeURIComponent(f.fullPath)}`} alt={f.name} />
                     ) : (
                       <div className="raw-placeholder">
                         <span className="raw-ext">{f.name.split('.').pop().toUpperCase()}</span>
