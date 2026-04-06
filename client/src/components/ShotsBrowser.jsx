@@ -50,26 +50,42 @@ function buildCountMap(arr, getKeys) {
   return map;
 }
 
+const COLLAPSE_COUNT = 8;
+
 function ChipGroup({ title, options, active, onToggle, countMap }) {
+  const [expanded, setExpanded] = useState(false);
   if (!options.length) return null;
+
   const sorted = [...options].sort((a, b) => {
+    // "other" always goes last
+    if (a[0] === 'other' && b[0] !== 'other') return 1;
+    if (b[0] === 'other' && a[0] !== 'other') return -1;
+    // active chips float to top
     const aActive = active.has(a[0]) ? 1 : 0;
     const bActive = active.has(b[0]) ? 1 : 0;
     if (bActive !== aActive) return bActive - aActive;
     return (countMap?.get(b[0]) || 0) - (countMap?.get(a[0]) || 0);
   });
+
+  // Always show active chips + first N inactive
+  const activeChips   = sorted.filter(([k]) => active.has(k));
+  const inactiveChips = sorted.filter(([k]) => !active.has(k));
+  const inactiveVisible = expanded ? inactiveChips : inactiveChips.slice(0, Math.max(0, COLLAPSE_COUNT - activeChips.length));
+  const hiddenCount = inactiveChips.length - inactiveVisible.length;
+  const visible = [...activeChips, ...inactiveVisible];
+
   return (
     <div className="shots-chip-group">
       <span className="shots-chip-label">{title}</span>
       <div className="shots-chips">
-        {sorted.map(([key, label]) => {
+        {visible.map(([key, label]) => {
           const count = countMap?.get(key) || 0;
           const isActive = active.has(key);
           return (
             <button
               key={key}
               className={`shot-chip${isActive ? ' active' : ''}`}
-              style={!isActive && count === 0 ? { opacity: 0.35 } : undefined}
+              style={!isActive && count === 0 ? { opacity: 0.3 } : undefined}
               onClick={() => onToggle(key)}
             >
               {label}
@@ -77,6 +93,16 @@ function ChipGroup({ title, options, active, onToggle, countMap }) {
             </button>
           );
         })}
+        {!expanded && hiddenCount > 0 && (
+          <button className="shot-chip shot-chip-more" onClick={() => setExpanded(true)}>
+            +{hiddenCount} more
+          </button>
+        )}
+        {expanded && inactiveChips.length > COLLAPSE_COUNT && (
+          <button className="shot-chip shot-chip-more" onClick={() => setExpanded(false)}>
+            Show less
+          </button>
+        )}
       </div>
     </div>
   );
@@ -327,14 +353,16 @@ export default function ShotsBrowser() {
 
         <div className="shots-mode-row">
           <span className="shots-chip-label" style={{ marginRight: 8 }}>Match</span>
-          <button
-            className={`shot-chip${filterMode === 'AND' ? ' active' : ''}`}
-            onClick={() => setFilterMode('AND')}
-          >ALL filters</button>
-          <button
-            className={`shot-chip${filterMode === 'OR' ? ' active' : ''}`}
-            onClick={() => setFilterMode('OR')}
-          >ANY filter</button>
+          <div className="shots-mode-toggle">
+            <button
+              className={`mode-btn${filterMode === 'AND' ? ' active' : ''}`}
+              onClick={() => setFilterMode('AND')}
+            >All</button>
+            <button
+              className={`mode-btn${filterMode === 'OR' ? ' active' : ''}`}
+              onClick={() => setFilterMode('OR')}
+            >Any</button>
+          </div>
         </div>
 
         <ChipGroup title="Source"    options={sources}    active={activeSource}    countMap={sourceCountMap}    onToggle={k => toggle(activeSource, setActiveSource, k)} />

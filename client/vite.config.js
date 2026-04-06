@@ -25,6 +25,7 @@ export default defineConfig({
       '/health': 'http://localhost:3001',
       '/nas': 'http://localhost:3001',
       '/dropbox': 'http://localhost:3001',
+      '/youtube': 'http://localhost:3001',
     }
   }
 })

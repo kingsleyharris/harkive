@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import StartScreen from './components/StartScreen';
 import ShimmerImg from './components/ShimmerImg';
 import YearGrid from './components/YearGrid';
@@ -16,7 +16,9 @@ const VideoPlayer     = lazy(() => import('./components/VideoPlayer'));
 const Dashboard       = lazy(() => import('./components/Dashboard'));
 const NotionBrowser   = lazy(() => import('./components/NotionBrowser'));
 const ShotsBrowser    = lazy(() => import('./components/ShotsBrowser'));
-const DropboxBrowser  = lazy(() => import('./components/DropboxBrowser'));
+const DropboxBrowser      = lazy(() => import('./components/DropboxBrowser'));
+const ReferenceBrowser    = lazy(() => import('./components/ReferenceBrowser'));
+const YoutubeBrowser      = lazy(() => import('./components/YoutubeBrowser'));
 
 const API = '';
 
@@ -30,12 +32,27 @@ const NAV = [
   { id: 'notion',    label: 'Notion',    icon: 'N' },
   { id: 'docs',      label: 'Documents', icon: '≡' },
   { id: 'projects',  label: 'Projects',  icon: '◉' },
-  { id: 'dropbox',   label: 'Dropbox',   icon: '◈' },
+  { id: 'dropbox',    label: 'Dropbox',    icon: '◈' },
+  { id: 'references', label: 'References', icon: '◎' },
+  { id: 'youtube',    label: 'YouTube',    icon: '▶' },
 ];
+
+const ALL_NAV_IDS = NAV.map(n => n.id);
+const DEFAULT_VISIBLE = ALL_NAV_IDS; // all visible by default
+
+function loadVisibleNav() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('harkive:nav'));
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch (_) {}
+  return DEFAULT_VISIBLE;
+}
 
 export default function App() {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState('dashboard');
+  const [showSettings, setShowSettings] = useState(false);
+  const [visibleNav, setVisibleNav] = useState(loadVisibleNav);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [years, setYears] = useState(null);
@@ -45,6 +62,14 @@ export default function App() {
   const [photos, setPhotos] = useState([]);
   const [lightbox, setLightbox] = useState(null);
   const searchTimeout = useRef(null);
+
+  const toggleNav = useCallback((id) => {
+    setVisibleNav(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      localStorage.setItem('harkive:nav', JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     fetch('/years').then(r => r.json()).then(setYears);
@@ -111,17 +136,38 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-title">Harkive</div>
         <nav className="sidebar-nav">
-          {NAV.map(n => (
-            <button
-              key={n.id}
-              className={`nav-item${tab === n.id ? ' active' : ''}`}
-              onClick={() => switchTab(n.id)}
-            >
-              <span className="nav-icon">{n.icon}</span>
-              <span className="nav-label">{n.label}</span>
-            </button>
-          ))}
+          {showSettings ? (
+            NAV.map(n => (
+              <label key={n.id} className="nav-item nav-toggle">
+                <input
+                  type="checkbox"
+                  checked={visibleNav.includes(n.id)}
+                  onChange={() => toggleNav(n.id)}
+                />
+                <span className="nav-icon">{n.icon}</span>
+                <span className="nav-label">{n.label}</span>
+              </label>
+            ))
+          ) : (
+            NAV.filter(n => visibleNav.includes(n.id)).map(n => (
+              <button
+                key={n.id}
+                className={`nav-item${tab === n.id ? ' active' : ''}`}
+                onClick={() => switchTab(n.id)}
+              >
+                <span className="nav-icon">{n.icon}</span>
+                <span className="nav-label">{n.label}</span>
+              </button>
+            ))
+          )}
         </nav>
+        <button
+          className={`nav-item sidebar-settings${showSettings ? ' active' : ''}`}
+          onClick={() => setShowSettings(s => !s)}
+        >
+          <span className="nav-icon">⚙</span>
+          <span className="nav-label">{showSettings ? 'Done' : 'Settings'}</span>
+        </button>
       </aside>
 
       <div className="content-area">
@@ -179,6 +225,8 @@ export default function App() {
           {!showSearch && tab === 'projects' && <ProjectsBrowser />}
           {!showSearch && tab === 'dashboard' && <Dashboard onNavigate={switchTab} />}
           {!showSearch && tab === 'dropbox' && <DropboxBrowser />}
+          {!showSearch && tab === 'references' && <ReferenceBrowser />}
+          {!showSearch && tab === 'youtube' && <YoutubeBrowser />}
           </Suspense>
         </main>
       </div>

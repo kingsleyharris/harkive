@@ -613,14 +613,15 @@ app.get('/dashboard', (req, res) => {
       const years = new Set();
       let shotCount = 0;
       for (const root of cfg.shots) {
-        function countShots(dir) {
+        function countShots(dir, depth = 0) {
+          if (depth > 12) return;
           try {
             for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
               if (e.isDirectory() && !e.name.startsWith('.')) {
-                countShots(path.join(dir, e.name));
+                countShots(path.join(dir, e.name), depth + 1);
               } else if (isBrowserImage(e.name)) {
                 shotCount++;
-                const m = e.name.match(/(\d{4})/);
+                const m = e.name.match(/\b(20[0-2]\d)\b/);
                 if (m) years.add(m[1]);
               }
             }

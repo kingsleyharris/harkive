@@ -22,6 +22,7 @@ export default function DropboxBrowser() {
   const [stack, setStack]       = useState([]);
   const [contents, setContents] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+  const [saved, setSaved]       = useState(new Set());
 
   const currentApiPath = stack.length ? stack[stack.length - 1].apiPath : null;
 
@@ -49,6 +50,14 @@ export default function DropboxBrowser() {
   function goRoot() {
     setStack([]);
     setLightbox(null);
+  }
+
+  function saveToKnowledge(file) {
+    fetch('/knowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: file.name.replace(/\.[^.]+$/, ''), source: 'dropbox', path: file.fullPath }),
+    }).then(() => setSaved(prev => new Set([...prev, file.fullPath])));
   }
 
   if (contents && !contents.configured && !currentApiPath) {
@@ -208,6 +217,10 @@ export default function DropboxBrowser() {
               onClick={e => { e.stopPropagation(); setLightbox(lightbox + 1); }}
             >›</button>
           )}
+          <button
+            style={{ position: 'absolute', top: 16, right: 56, background: saved.has(images[lightbox].fullPath) ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer', borderRadius: 4, padding: '5px 10px' }}
+            onClick={e => { e.stopPropagation(); saveToKnowledge(images[lightbox]); }}
+          >{saved.has(images[lightbox].fullPath) ? '◎ Saved' : '◎ Save'}</button>
           <button
             style={{ position: 'absolute', top: 16, right: 20, background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer' }}
             onClick={() => setLightbox(null)}

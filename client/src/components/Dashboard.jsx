@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
 
+function fmt(n) {
+  if (n == null) return '–';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return n.toLocaleString();
+}
+
 function StatCard({ value, label, sub, onClick }) {
   return (
     <div className="stat-card" onClick={onClick} style={onClick ? { cursor: 'pointer' } : {}}>
-      <div className="stat-value">{value}</div>
+      <div className="stat-value">{fmt(value)}</div>
       <div className="stat-label">{label}</div>
       {sub && <div className="stat-sub">{sub}</div>}
     </div>
@@ -61,6 +68,13 @@ export default function Dashboard({ onNavigate }) {
             <div className="stat-grid" style={{ marginBottom: 32 }}>
               <StatCard value={stats.dropboxFolders} label="Folders" onClick={() => onNavigate('dropbox')} />
               <StatCard value={stats.dropboxFiles}   label="Root Files" onClick={() => onNavigate('dropbox')} />
+            </div>
+          </>}
+
+          {stats.youtubeVideos > 0 && <>
+            <div className="section-heading" style={{ marginBottom: 12 }}>YouTube</div>
+            <div className="stat-grid" style={{ marginBottom: 32 }}>
+              <StatCard value={stats.youtubeVideos.toLocaleString()} label="Watched Videos" onClick={() => onNavigate('youtube')} />
             </div>
           </>}
         </>
